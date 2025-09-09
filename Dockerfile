@@ -1,32 +1,18 @@
-# To build, run in root of tegola source tree:
-#
-#	$ git clone git@github.com:go-spatial/tegola.git or git clone https://github.com/go-spatial/tegola.git
-#	$ cd tegola
-#	$ docker build -t tegola .
-#
-# To use with local files, add file data sources (i.e. Geopackages) and config as config.toml to a
-# local directory and mount that directory as a volume at /opt/tegola_config/.  Examples:
-#
-# To display command-line options available:
-#  
-#	$ docker run --rm tegola
-#
-# Example PostGIS use w/ http-based config:
-#
-#	$ docker run -p 8080 tegola --config http://my-domain.com/config serve
-#
-# Example PostGIS use w/ local config:
-#	$ mkdir docker-config
-#	$ cp my-config-file docker-config/config.toml
-#	$ docker run -v /path/to/docker-config:/opt/tegola_config -p 8080 tegola serve
-#
-# Example gpkg use:
-#  $ mkdir docker-config
-#  $ cp my-config-file docker-config/config.toml
-#  $ cp my-db.gpkg docker-config/
-#  $ docker run -v /path/to/docker-config:/opt/tegola_config -p 8080 tegola serve
+# =========================
+# 1) 构建 UI（生成 ui/dist）
+# =========================
+FROM node:20-alpine AS ui
+WORKDIR /app/ui
+# 仅复制包清单，利用缓存
+COPY ui/package*.json ./
+RUN npm ci
+# 复制前端代码并构建
+COPY ui/ .
+RUN npm run build
 
-# Intermediary container for building
+# ==================================
+# 2) 构建 Go 二进制（嵌入 ui/dist）
+# ==================================
 FROM golang:1.24.5-alpine3.22 AS build
 
 ARG BUILDPKG="github.com/go-spatial/tegola/internal/build"
@@ -38,33 +24,32 @@ ENV GIT_BRANCH="${BRANCH}"
 ENV GIT_REVISION="${REVISION}"
 ENV BUILD_PKG="${BUILDPKG}"
 
-# Only needed for CGO support at time of build, results in no noticable change in binary size
-# incurs approximately 1:30 extra build time (1:54 vs 0:27) to install packages.  Doesn't impact
-# development as these layers are drawn from cache after the first build.
-RUN apk update \
-	&& apk add build-base
+# CGO 依赖（与原注释一致）
+RUN apk update && apk add --no-cache build-base git
 
-# Set up source for compilation
+# 准备源代码
 RUN mkdir -p /go/src/github.com/go-spatial/tegola
-COPY . /go/src/github.com/go-spatial/tegola
+WORKDIR /go/src/github.com/go-spatial/tegola
+COPY . .
 
+# 把 UI 产物塞回仓库路径，供 //go:embed 匹配
+COPY --from=ui /app/ui/dist ./ui/dist
+
+# 输出环境变量（可保留，也可删除）
 RUN env
 
-# Build binary
-RUN cd /go/src/github.com/go-spatial/tegola/cmd/tegola \
-	&& go build -v  \
-	-ldflags "-w -X '${BUILD_PKG}.Version=${VERSION}' -X '${BUILD_PKG}.GitRevision=${GIT_REVISION}' -X '${BUILD_PKG}.GitBranch=${GIT_BRANCH}'" \
-	-gcflags "-N -l" \
-	-o /opt/tegola \
-	&& chmod a+x /opt/tegola
+# 构建 tegola 可执行文件
+WORKDIR /go/src/github.com/go-spatial/tegola/cmd/tegola
+RUN go build -v \
+  -ldflags "-w -X '${BUILD_PKG}.Version=${VERSION}' -X '${BUILD_PKG}.GitRevision=${GIT_REVISION}' -X '${BUILD_PKG}.GitBranch=${GIT_BRANCH}'" \
+  -gcflags "-N -l" \
+  -o /opt/tegola && chmod a+x /opt/tegola
 
-# Create minimal deployment image, just alpine & the binary
+# ===========================
+# 3) 运行时最小化镜像
+# ===========================
 FROM alpine:3.18
-
-RUN apk update \
-	&& apk add ca-certificates \
-	&& rm -rf /var/cache/apk/*
-
+RUN apk update && apk add --no-cache ca-certificates && rm -rf /var/cache/apk/*
 COPY --from=build /opt/tegola /opt/
 WORKDIR /opt
 ENTRYPOINT ["/opt/tegola"]
