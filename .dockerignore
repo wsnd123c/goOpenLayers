@@ -1,0 +1,63 @@
+# Git相关文件
+.git
+.gitignore
+.gitattributes
+
+# 文档文件
+*.md
+README*
+docs/
+screenshots/
+
+# 开发相关文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 构建产物
+tegola_new.exe
+*.exe
+*.so
+*.dylib
+
+# 测试文件
+*_test.go
+testdata/
+test/
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.log
+
+# Node.js相关 (UI部分)
+ui/node_modules/
+ui/dist/
+ui/.nuxt/
+ui/.output/
+ui/.env
+
+# Docker相关
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# CI/CD
+.github/
+ci/
+
+# 其他
+.DS_Store
+Thumbs.db
+*.bak
+*.backup
+absolute/
+vendor/
+
+# 保留重要文件
+!go.mod
+!go.sum
+!config.toml

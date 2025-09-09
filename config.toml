@@ -1,0 +1,14 @@
+
+
+[webserver]
+port = ":19089"
+
+[app_config_source]
+ip = '127.0.0.1'
+port = '8848'
+type = "nacos"
+nameSpaceId = 'public'
+dataId = 'tegola_test'
+group = 'DEFAULT_GROUP'
+username = 'nacos'
+password = 'dky666dky'

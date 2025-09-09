@@ -1,0 +1,12 @@
+tile_buffer = 64
+
+[webserver]
+port = ":19089"
+
+[app_config_source]
+ip = '127.0.0.1'
+port = ':8848'
+type = "nacos"
+nameSpaceId = 'tegola'
+dataId = 'tegola'
+group = 'DEFAULT_GROUP'
