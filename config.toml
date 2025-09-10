@@ -12,3 +12,66 @@ dataId = 'tegola_test'
 group = 'DEFAULT_GROUP'
 username = 'nacos'
 password = 'dky666dky'
+
+# 缓存配置（显著提升重复请求性能）
+[cache]
+type = "file"               # 使用文件缓存
+basepath = "/var/cache/tegola"  # 缓存目录（确保有写入权限）
+max_age = "72h"             # 缓存过期时间（72小时）
+max_size = 10737418240      # 最大缓存大小（10GB）
+
+
+
+# PostGIS数据提供者配置
+[[providers]]
+name = "inference_database" # 数据源名称（唯一标识）
+type = "mvt_postgis"            # 数据源类型      # 数据源类型
+uri = "postgres://postgres:postgres@10.13.1.13:5432/inference_database?sslmode=disable"
+srid = 4326               # 输出瓦片的投影（Web Mercator）
+
+# 启用连接池复用
+pool_min_idle = 5
+pool_max_idle = 20
+pool_max_lifetime = "300s"
+
+# 地面图层配置
+[[providers.layers]]
+name = "grounds"                # 图层名称
+tablename = "grounds"           # 数据库表名
+geometry_fieldname = "geom"     # 几何字段名
+geometry_type = "multipolygon"  # 几何类型
+id_fieldname = "gid"            # 唯一ID字段
+srid = 4326               # 输出瓦片的投影（Web Mercator）
+# 自定义SQL优化查询（仅返回geom和gid字段）
+sql = "SELECT ST_AsMVTGeom(geom, !BBOX!, 4096, 256, true) AS geom, gid FROM grounds WHERE geom && !BBOX!"
+
+# 建筑物图层配置
+[[providers.layers]]
+name = "buildings"              # 图层名称
+tablename = "buildings"         # 数据库表名
+geometry_fieldname = "geom"     # 几何字段名
+geometry_type = "multipolygon"  # 几何类型
+id_fieldname = "gid"            # 唯一ID字段
+srid = 4326               # 输出瓦片的投影（Web Mercator）              # 与数据源保持一致
+
+sql = "SELECT ST_AsMVTGeom(geom, !BBOX!, 4096, 256, true) AS geom, gid FROM buildings WHERE geom && !BBOX!"
+
+# 地图配置
+[[maps]]
+name = "inference_database"     # 地图名称（用于URL：/maps/inference_database）
+attribution = "Tegola Vector Tiles"  # 版权信息
+max_zoom = 20                   # 最大缩放级别
+min_zoom = 0                    # 最小缩放级别
+
+# 地图中的地面图层
+[[maps.layers]]
+provider_layer = "inference_database.grounds"  # 关联数据源的图层
+min_zoom = 5                    # 该图层可用的最小缩放级别
+max_zoom = 20                   # 该图层可用的最大缩放级别
+
+
+# 地图中的建筑物图层
+[[maps.layers]]
+provider_layer = "inference_database.buildings"
+min_zoom = 10                   # 建筑物在更高缩放级别才显示
+max_zoom = 20
