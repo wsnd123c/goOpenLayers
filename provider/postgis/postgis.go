@@ -120,6 +120,7 @@ type Provider struct {
 	layers     map[string]Layer
 	srid       uint64
 	firstLayer string
+	taskId     string
 
 	// collectorsRegistered keeps track if we have already collectorsRegistered these collectors
 	// as the Collectors function will be called for each map and layer, but
@@ -642,14 +643,17 @@ func CreateProvider(
 			// check all tokens are valid
 			for _, token := range provider.ParameterTokenRegexp.FindAllString(sql, -1) {
 				if _, ok := conf.ReservedTokens[token]; !ok {
-					return nil, fmt.Errorf(
-						"SQL for layer (%v) %v references an unknown token %s: %v",
-						i,
-						lName,
-						token,
-						sql,
-					)
+					if token != "!TASKID!" {
+						return nil, fmt.Errorf(
+							"SQL for layer (%v) %v references an unknown token %s: %v",
+							i,
+							lName,
+							token,
+							sql,
+						)
+					}
 				}
+
 			}
 
 			l.sql = sql
@@ -902,6 +906,7 @@ func (p Provider) Layers() ([]provider.LayerInfo, error) {
 }
 
 // TileFeatures adheres to the provider.Tiler any
+// 他toml配置之后不会走这个
 func (p Provider) TileFeatures(
 	ctx context.Context,
 	layer string,
@@ -909,6 +914,8 @@ func (p Provider) TileFeatures(
 	params provider.Params,
 	fn func(f *provider.Feature) error,
 ) error {
+	log.Infof("666666666666")
+	log.Infof("Params: %#v", params)
 	var mapName string
 	{
 		mapNameVal := ctx.Value(observability.ObserveVarMapName)
@@ -1075,6 +1082,18 @@ func (p Provider) MVTForLayers(
 	params provider.Params,
 	layers []provider.Layer,
 ) ([]byte, error) {
+	log.Infof("params raw: %#v", params)
+
+	if params == nil {
+		log.Warn("params is nil")
+	} else {
+		if v, ok := params["!TASKID!"]; ok {
+			log.Infof("taskId=%v", v)
+		} else {
+			log.Warn("taskId not found in params")
+		}
+	}
+
 	var (
 		err     error
 		sqls    = make([]string, 0, len(layers))

@@ -29,7 +29,7 @@ func TestMaps(t *testing.T) {
 				provArr[i] = tc.providers[i]
 			}
 
-			providers, err := register.Providers(provArr, tc.maps)
+			providers, err := register.Providers(provArr, tc.maps, nil)
 			if err != nil {
 				t.Errorf("unexpected err: %v", err)
 				return

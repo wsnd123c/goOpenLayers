@@ -54,11 +54,11 @@ type Config struct {
 	// LocationName is the file name or http server that the config was read from.
 	// If this is an empty string, it means that the location was unknown. This is the case if
 	// the Parse() function is used directly.
-	LocationName string
-	Webserver        Webserver `toml:"webserver"`
-	Cache            env.Dict  `toml:"cache"`
-	Observer         env.Dict  `toml:"observer"`
-	AppConfigSource  env.Dict  `toml:"app_config_source"`
+	LocationName    string
+	Webserver       Webserver `toml:"webserver"`
+	Cache           env.Dict  `toml:"cache"`
+	Observer        env.Dict  `toml:"observer"`
+	AppConfigSource env.Dict  `toml:"app_config_source"`
 	// Map of providers.
 	//  all providers must have at least two entries.
 	// 1. name -- this is the name that is referenced in
@@ -361,10 +361,12 @@ func (c *Config) ConfigureTileBuffers() {
 func Parse(reader io.Reader, location string) (conf Config, err error) {
 	// decode conf file, don't care about the meta data.
 	_, err = toml.NewDecoder(reader).Decode(&conf)
+	fmt.Printf("Raw Providers: %#v\n", conf.Providers)
+
 	if err != nil {
 		return conf, err
 	}
-
+	fmt.Printf("Raw Providers from TOML: %#v\n", conf.Providers)
 	for _, m := range conf.Maps {
 		for k, p := range m.Parameters {
 			p.Normalize()

@@ -171,18 +171,23 @@ func handleConfigUpdate(app source.App) {
 	log.Infof("Handling config update for app: %s", app.Key)
 	log.Infof("Providers: %+v", app.Providers)
 	log.Infof("Maps: %+v", app.Maps)
-	
+	//这是个map的打印
 	// convert providers to dict.Dicter format
 	provArr := make([]dict.Dicter, len(app.Providers))
 	for i := range provArr {
 		provArr[i] = app.Providers[i]
+		fmt.Println(provArr[i])
 	}
 
 	// register new providers
-	providers, err := register.Providers(provArr, app.Maps)
+	providers, err := register.Providers(provArr, app.Maps, nil)
+	fmt.Println("这是provArr:%+v", provArr)
 	if err != nil {
 		log.Errorf("Failed to register providers for app %s: %v", app.Key, err)
 		return
+	}
+	for i, p := range app.Providers {
+		fmt.Printf("Provider[%d] = %#v\n", i, p)
 	}
 
 	// register new maps

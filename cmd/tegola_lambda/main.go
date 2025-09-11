@@ -66,7 +66,7 @@ func init() {
 	}
 
 	// register the providers
-	providers, err := register.Providers(provArr, nil)
+	providers, err := register.Providers(provArr, nil, nil)
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)

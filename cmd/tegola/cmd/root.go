@@ -78,11 +78,11 @@ func initConfig(configFile string, cacheRequired bool, logLevel string) (err err
 	if conf, err = config.Load(configFile); err != nil {
 		return err
 	}
-	
+
 	// Debug: Check if AppConfigSource was loaded
 	fmt.Printf("DEBUG: Config loaded. AppConfigSource: %+v\n", conf.AppConfigSource)
 	fmt.Printf("DEBUG: AppConfigSource length: %d\n", len(conf.AppConfigSource))
-	
+
 	if err = conf.Validate(); err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func initConfig(configFile string, cacheRequired bool, logLevel string) (err err
 		provArr[i] = conf.Providers[i]
 	}
 
-	providers, err := register.Providers(provArr, conf.Maps)
+	providers, err := register.Providers(provArr, conf.Maps, nil)
 	if err != nil {
 		return fmt.Errorf("could not register providers: %v", err)
 	}

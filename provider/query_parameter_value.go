@@ -2,7 +2,10 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+
+	"github.com/go-spatial/tegola/internal/log"
 )
 
 // Query parameter holds normalized parameter data ready to be inserted in the
@@ -27,6 +30,7 @@ type Params map[string]QueryParameterValue
 // within the provided SQL string
 func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 	if params == nil {
+		log.Warn("ReplaceParams called with nil params")
 		return sql
 	}
 
@@ -36,16 +40,37 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 	)
 
 	for _, token := range ParameterTokenRegexp.FindAllString(sql, -1) {
+
+		// ---- 1. 特殊处理 taskId ----
+		if token == "!TASKID!" {
+			if v, ok := params["!TASKID!"]; ok {
+				tableName := fmt.Sprintf("%v", v.Value)
+
+				// 安全校验（只允许字母、数字、下划线）
+				validName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+				if !validName.MatchString(tableName) {
+					log.Errorf("invalid table name: %s", tableName)
+					continue
+				}
+
+				log.Infof("Replacing token %s with table: %s", token, tableName)
+				sql = strings.ReplaceAll(sql, token, tableName)
+			} else {
+				log.Warn("taskId param not found in request")
+			}
+			continue
+		}
+
+		// ---- 2. 默认参数替换逻辑 ----
 		resultSQL, ok := cache[token]
 		if ok {
-			// Already have it cached, replace the token and move on.
 			sql = strings.ReplaceAll(sql, token, resultSQL)
 			continue
 		}
 
 		param, ok := params[token]
 		if !ok {
-			// Unknown token, ignoring
+			// 未识别的 token，跳过
 			continue
 		}
 
@@ -53,7 +78,7 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 		sb.Grow(len(param.SQL))
 		argFound := false
 
-		// Replace every `?` in the param's SQL with a positional argument
+		// 替换 param 中的 ?
 		for _, c := range param.SQL {
 			if c != '?' {
 				sb.WriteRune(c)
@@ -72,5 +97,6 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 		sql = strings.ReplaceAll(sql, token, resultSQL)
 	}
 
+	log.Infof("Final SQL after ReplaceParams:\n%s", sql)
 	return sql
 }
