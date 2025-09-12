@@ -1085,7 +1085,6 @@ func (p Provider) MVTForLayers(
 	log.Infof("params raw: %#v", params)
 
 	if params == nil {
-		log.Warn("params is nil")
 	} else {
 		if v, ok := params["!TASKID!"]; ok {
 			log.Infof("taskId=%v", v)
@@ -1127,7 +1126,10 @@ func (p Provider) MVTForLayers(
 		if err := ctxErr(ctx, err); err != nil {
 			return nil, err
 		}
-
+		//新的
+		rawMVTName := layers[i].MVTName
+		var mvtNameArgs []any
+		replacedMVTName := params.ReplaceParams(rawMVTName, &mvtNameArgs)
 		// replace configured query parameters if any
 		sql = params.ReplaceParams(sql, &args)
 
@@ -1144,12 +1146,13 @@ func (p Provider) MVTForLayers(
 
 		sqls = append(sqls, fmt.Sprintf(
 			`(SELECT ST_AsMVT(q,'%s',%d,'%s',%s) AS data FROM (%s) AS q)`,
-			layers[i].MVTName,
+			replacedMVTName,
 			tegola.DefaultExtent,
 			l.GeomFieldName(),
 			featureIDName,
 			sql,
 		))
+		fmt.Printf("%s\n", sqls)
 	}
 
 	subsqls := strings.Join(sqls, "||")

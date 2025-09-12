@@ -1,9 +1,6 @@
 
-
 [webserver]
 port = ":19089"
-
-
 
 # 缓存配置（显著提升重复请求性能）
 [cache]
@@ -12,14 +9,12 @@ basepath = "/var/cache/tegola"  # 缓存目录（确保有写入权限）
 max_age = "72h"             # 缓存过期时间（72小时）
 max_size = 10737418240      # 最大缓存大小（10GB）
 
-
-
 # PostGIS数据提供者配置
 [[providers]]
 name = "inference_database" # 数据源名称（唯一标识）
 type = "mvt_postgis"            # 数据源类型      # 数据源类型
 uri = "postgres://postgres:postgres@127.0.0.1:5432/inference_database?sslmode=disable"
-srid = 4326               # 输出瓦片的投影（Web Mercator）
+srid = 3857               # 输出瓦片的投影（Web Mercator）
 params = ["taskId"]
 
 # 启用连接池复用
@@ -27,28 +22,13 @@ pool_min_idle = 5
 pool_max_idle = 20
 pool_max_lifetime = "300s"
 # 地面图层配置
-[[providers.layers]]
-name = "grounds"
-geometry_fieldname = "geom"
-geometry_type = "multipolygon"
-id_fieldname = "gid"
-srid = 4326
-params = ["taskId"]
-
-sql = """
-SELECT ST_AsMVTGeom(geom, !BBOX!, 4096, 256, true) AS geom, gid
-FROM !TASKID!
-WHERE geom && !BBOX!
-"""
-
-
 # 建筑物图层配置
 [[providers.layers]]
-name = "buildings"
+name = "!TASKID!"
 geometry_fieldname = "geom"
 geometry_type = "multipolygon"
 id_fieldname = "gid"
-srid = 4326
+srid = 3857
 params = ["taskId"]
 
 sql = """
@@ -61,7 +41,7 @@ WHERE geom && !BBOX!
 [[maps]]
 name = "inference_database"     # 地图名称（用于URL：/maps/inference_database）
 attribution = "Tegola Vector Tiles"  # 版权信息
-max_zoom = 20                   # 最大缩放级别
+max_zoom = 100                # 最大缩放级别
 min_zoom = 0                    # 最小缩放级别
 
 # 配置地图参数
@@ -71,14 +51,11 @@ token = "!TASKID!"
 type = "string"
 
 # 地图中的地面图层
-[[maps.layers]]
-provider_layer = "inference_database.grounds"  # 关联数据源的图层
-min_zoom = 5                    # 该图层可用的最小缩放级别
-max_zoom = 20                   # 该图层可用的最大缩放级别
+             # 该图层可用的最大缩放级别
 
 
 # 地图中的建筑物图层
 [[maps.layers]]
-provider_layer = "inference_database.buildings"
+provider_layer = "inference_database.!TASKID!"
 min_zoom = 10                   # 建筑物在更高缩放级别才显示
 max_zoom = 20
