@@ -43,6 +43,7 @@ var ReservedTokens = map[string]struct{}{
 	IdFieldToken:          {},
 	GeomFieldToken:        {},
 	GeomTypeToken:         {},
+	"!COLUMNS!":           {},
 }
 
 var blacklistHeaders = []string{"content-encoding", "content-length", "content-type"}

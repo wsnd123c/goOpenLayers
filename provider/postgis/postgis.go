@@ -458,6 +458,7 @@ func CreateProvider(
 	}
 
 	name, err := config.String(ConfigKeyName, nil)
+	fmt.Println("这是我的name", name)
 	if err != nil {
 		return nil, err
 	}
@@ -562,7 +563,7 @@ func CreateProvider(
 				err,
 			)
 		}
-
+		//这里是拿到了toml配置的sql,打个记号
 		var sql string
 		sql, err = layer.String(ConfigKeySQL, &sql)
 		if err != nil {
@@ -1083,6 +1084,7 @@ func (p Provider) MVTForLayers(
 	layers []provider.Layer,
 ) ([]byte, error) {
 	log.Infof("params raw: %#v", params)
+	fmt.Println("tile:", tile, "params:", params, "layers:", layers, "ctx", ctx)
 
 	if params == nil {
 	} else {
@@ -1100,6 +1102,7 @@ func (p Provider) MVTForLayers(
 	)
 
 	{
+		//拿到数据库的名称
 		mapNameVal := ctx.Value(observability.ObserveVarMapName)
 		if mapNameVal != nil {
 			// if it's not convertible to a string, we will ignore it.
@@ -1132,8 +1135,10 @@ func (p Provider) MVTForLayers(
 		replacedMVTName := params.ReplaceParams(rawMVTName, &mvtNameArgs)
 		// replace configured query parameters if any
 		sql = params.ReplaceParams(sql, &args)
-
-		// ref: https://postgis.net/docs/ST_AsMVT.html
+		sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, l.GeomFieldName(), sql, &args)
+		if err != nil {
+			return nil, fmt.Errorf("error replacing dynamic columns for layer %v: %w", l.Name(), err)
+		}
 		// bytea ST_AsMVT(any_element row, text name, integer extent, text geom_name, text feature_id_name)
 
 		var featureIDName string
@@ -1152,6 +1157,7 @@ func (p Provider) MVTForLayers(
 			featureIDName,
 			sql,
 		))
+		fmt.Println(featureIDName)
 		fmt.Printf("%s\n", sqls)
 	}
 

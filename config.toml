@@ -13,7 +13,7 @@ max_size = 10737418240      # 最大缓存大小（10GB）
 [[providers]]
 name = "inference_database" # 数据源名称（唯一标识）
 type = "mvt_postgis"            # 数据源类型      # 数据源类型
-uri = "postgres://postgres:postgres@10.13.1.13:5432/inference_database?sslmode=disable"
+uri = "postgres://postgres:postgres@127.0.0.1:5432/inference_database?sslmode=disable"
 srid = 3857               # 输出瓦片的投影（Web Mercator）
 params = ["taskId"]
 
@@ -25,24 +25,23 @@ pool_max_lifetime = "300s"
 # 建筑物图层配置
 [[providers.layers]]
 name = "!TASKID!"
-geometry_fieldname = "geom"
+geometry_fieldname = "geometry"
 geometry_type = "multipolygon"
-id_fieldname = "gid"
+id_fieldname = "id"
 srid = 3857
 params = ["taskId"]
 
 sql = """
-SELECT ST_AsMVTGeom(geom, !BBOX!, 4096, 256, true) AS geom, gid
+SELECT ST_AsMVTGeom(geometry, !BBOX!, 4096, 256, true) AS geometry, id, !COLUMNS!
 FROM !TASKID!
-WHERE geom && !BBOX!
+WHERE geometry && !BBOX!
 """
 
 # 地图配置
 [[maps]]
 name = "inference_database"     # 地图名称（用于URL：/maps/inference_database）
 attribution = "Tegola Vector Tiles"  # 版权信息
-max_zoom = 100                # 最大缩放级别
-min_zoom = 0                    # 最小缩放级别
+
 
 # 配置地图参数
 [[maps.params]]
@@ -50,12 +49,7 @@ name = "taskId"
 token = "!TASKID!"
 type = "string"
 
-# 地图中的地面图层
-             # 该图层可用的最大缩放级别
-
-
-# 地图中的建筑物图层
+# 地图中的动态图层
 [[maps.layers]]
 provider_layer = "inference_database.!TASKID!"
-min_zoom = 10                   # 建筑物在更高缩放级别才显示
-max_zoom = 20
+
