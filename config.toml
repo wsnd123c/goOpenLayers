@@ -13,7 +13,7 @@ max_size = 10737418240      # 最大缓存大小（10GB）
 [[providers]]
 name = "inference_database" # 数据源名称（唯一标识）
 type = "mvt_postgis"            # 数据源类型      # 数据源类型
-uri = "postgres://postgres:postgres@127.0.0.1:5432/inference_database?sslmode=disable"
+uri = "postgres://postgres:postgres@10.13.1.13:5432/inference_database?sslmode=disable"
 srid = 3857               # 输出瓦片的投影（Web Mercator）
 params = ["taskId"]
 
