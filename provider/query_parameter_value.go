@@ -43,7 +43,7 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 
 	for _, token := range ParameterTokenRegexp.FindAllString(sql, -1) {
 
-		// ---- 1. 特殊处理 taskId ----
+		// ---- 1. 特殊处理  ----
 		if token == "!TASKID!" {
 			if v, ok := params["!TASKID!"]; ok {
 				tableName := fmt.Sprintf("%v", v.Value)
@@ -58,7 +58,7 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 				log.Infof("Replacing token %s with table: %s", token, tableName)
 				sql = strings.ReplaceAll(sql, token, tableName)
 			} else {
-				log.Warn("taskId param not found in request")
+				log.Warn(" param not found in request")
 			}
 			continue
 		}
@@ -168,7 +168,7 @@ func (params Params) ReplaceParamsWithColumns(
 				log.Infof("Replacing token %s with table: %s", token, tableName)
 				sql = strings.ReplaceAll(sql, token, tableName)
 			} else {
-				log.Warn("taskId param not found in request")
+				log.Warn(" param not found in request")
 			}
 			continue
 		}
@@ -184,7 +184,7 @@ func (params Params) ReplaceParamsWithColumns(
 				log.Infof("Replacing token %s with columns: %s", token, colList)
 				sql = strings.ReplaceAll(sql, token, colList)
 			} else {
-				log.Warn("taskId param not found for !COLUMNS!")
+				log.Warn(" param not found for !COLUMNS!")
 			}
 			continue
 		}

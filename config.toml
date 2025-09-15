@@ -1,6 +1,6 @@
 
 [webserver]
-port = ":19089"
+port = ":19091"
 
 # 缓存配置（显著提升重复请求性能）
 [cache]
@@ -15,7 +15,7 @@ name = "inference_database" # 数据源名称（唯一标识）
 type = "mvt_postgis"            # 数据源类型      # 数据源类型
 uri = "postgres://postgres:postgres@10.13.1.13:5432/inference_database?sslmode=disable"
 srid = 3857               # 输出瓦片的投影（Web Mercator）
-params = ["taskId"]
+params = ["task_id"]
 
 # 启用连接池复用
 pool_min_idle = 5
@@ -29,7 +29,7 @@ geometry_fieldname = "geometry"
 geometry_type = "multipolygon"
 id_fieldname = "id"
 srid = 3857
-params = ["taskId"]
+params = ["task_id"]
 
 sql = """
 SELECT ST_AsMVTGeom(geometry, !BBOX!, 4096, 256, true) AS geometry, id, !COLUMNS!
@@ -45,7 +45,7 @@ attribution = "Tegola Vector Tiles"  # 版权信息
 
 # 配置地图参数
 [[maps.params]]
-name = "taskId"
+name = "task_id"
 token = "!TASKID!"
 type = "string"
 

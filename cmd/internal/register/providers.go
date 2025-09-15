@@ -33,7 +33,7 @@ func (e ErrProviderTypeInvalid) Error() string {
 }
 
 // Providers registers data provider backends
-func Providers(providers []dict.Dicter, maps []provider.Map, taskId []dict.Dicter) (map[string]provider.TilerUnion, error) {
+func Providers(providers []dict.Dicter, maps []provider.Map, task_id []dict.Dicter) (map[string]provider.TilerUnion, error) {
 	// holder for registered providers
 	registeredProviders := map[string]provider.TilerUnion{}
 
@@ -80,7 +80,7 @@ func Providers(providers []dict.Dicter, maps []provider.Map, taskId []dict.Dicte
 		// add the provider to our map of registered providers
 		registeredProviders[pname] = prov
 		log.Infof("registering provider(type): %v (%v)", pname, ptype)
-		log.Infof("这是我的taskId: %+v", taskId)
+		log.Infof("这是我的task_id: %+v", task_id)
 
 	}
 
