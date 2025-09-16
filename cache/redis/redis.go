@@ -60,7 +60,7 @@ func CreateOptions(c dict.Dicter) (opts *redis.Options, err error) {
 
 		return opts, nil
 	}
-
+	log.Infof("112312")
 	log.Warn("connecting to redis using 'Addr' is deprecated. use 'uri' instead.")
 
 	network, err := c.String(ConfigKeyNetwork, &defaultNetwork)
@@ -119,13 +119,14 @@ func New(c dict.Dicter) (rcache cache.Interface, err error) {
 	if err != nil {
 		return nil, err
 	}
-
 	client := redis.NewClient(opts)
 
 	pong, err := client.Ping(ctx).Result()
 	if err != nil {
+		fmt.Println("Error connecting to Redis:", err)
 		return nil, err
 	}
+	fmt.Println("Redis connected successfully:", pong)
 	if pong != "PONG" {
 		return nil, fmt.Errorf("redis did not respond with 'PONG', '%s'", pong)
 	}
@@ -155,13 +156,31 @@ type RedisCache struct {
 }
 
 func (rdc *RedisCache) Set(ctx context.Context, key *cache.Key, val []byte) error {
+	fmt.Printf("RedisCache.Set called for key: %s, data size: %d bytes, MaxZoom: %d\n", key.String(), len(val), rdc.MaxZoom)
+
 	if key.Z > rdc.MaxZoom {
+		fmt.Printf("RedisCache.Set: skipping cache due to zoom level %d > MaxZoom %d\n", key.Z, rdc.MaxZoom)
 		return nil
 	}
 
-	return rdc.Redis.
-		Set(ctx, key.String(), val, rdc.Expiration).
-		Err()
+	keyStr := key.String()
+	fmt.Printf("RedisCache.Set: About to call Redis.Set with key: '%s', expiration: %v\n", keyStr, rdc.Expiration)
+
+	err := rdc.Redis.Set(ctx, keyStr, val, rdc.Expiration).Err()
+	if err != nil {
+		fmt.Printf("RedisCache.Set error: %v\n", err)
+	} else {
+		fmt.Printf("RedisCache.Set success for key: %s\n", keyStr)
+
+		// 验证数据是否真的写入了
+		testVal, testErr := rdc.Redis.Get(ctx, keyStr).Bytes()
+		if testErr != nil {
+			fmt.Printf("RedisCache.Set verification failed - cannot read back key: %v\n", testErr)
+		} else {
+			fmt.Printf("RedisCache.Set verification success - read back %d bytes\n", len(testVal))
+		}
+	}
+	return err
 }
 
 func (rdc *RedisCache) Get(ctx context.Context, key *cache.Key) (val []byte, hit bool, err error) {

@@ -28,18 +28,25 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 			return
 		}
 
-		// ignore requests with query parameters
-		if r.URL.RawQuery != "" {
+		// ignore requests with query parameters (except task_id for dynamic tables)
+		if r.URL.RawQuery != "" && !strings.Contains(r.URL.RawQuery, "task_id=") {
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		// parse our URI into a cache key structure (remove any configured URIPrefix + "maps/" )
-		key, err := cache.ParseKey(strings.TrimPrefix(r.URL.Path, path.Join(URIPrefix, "maps")))
+		keyPath := strings.TrimPrefix(r.URL.Path, path.Join(URIPrefix, "maps"))
+
+		key, err := cache.ParseKey(keyPath)
 		if err != nil {
 			log.Errorf("cache middleware: ParseKey err: %v", err)
 			next.ServeHTTP(w, r)
 			return
+		}
+
+		// include query parameters in cache key for dynamic content
+		if r.URL.RawQuery != "" {
+			key.MapName = key.MapName + "?" + r.URL.RawQuery
 		}
 
 		// use the URL path as the key

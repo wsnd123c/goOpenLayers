@@ -66,6 +66,19 @@ var (
 
 // NewRouter set's up our routes.
 func NewRouter(a *atlas.Atlas) *httptreemux.TreeMux {
+	// use default atlas if nil is passed - create a proper atlas instance that delegates to default
+	if a == nil {
+		// Create a new atlas instance but populate it with default atlas data
+		a = &atlas.Atlas{}
+		// Get cache from the default atlas
+		if defaultCache := atlas.GetCache(); defaultCache != nil {
+			a.SetCache(defaultCache)
+		}
+		// Copy maps from default atlas
+		for _, m := range atlas.AllMaps() {
+			a.AddMap(m)
+		}
+	}
 	o := a.Observer()
 	r := httptreemux.New()
 	group := r.NewGroup(URIPrefix)
