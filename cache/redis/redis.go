@@ -12,7 +12,6 @@ import (
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/internal/log"
 )
 
 const CacheType = "redis"
@@ -60,8 +59,6 @@ func CreateOptions(c dict.Dicter) (opts *redis.Options, err error) {
 
 		return opts, nil
 	}
-	log.Infof("112312")
-	log.Warn("connecting to redis using 'Addr' is deprecated. use 'uri' instead.")
 
 	network, err := c.String(ConfigKeyNetwork, &defaultNetwork)
 	if err != nil {
