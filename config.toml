@@ -1,12 +1,12 @@
 
 [webserver]
-port = ":19091"
+port = ":19089"
 
 # 缓存配置（显著提升重复请求性能）
 [cache]
 type = "redis"
 # 无密码的 Redis 连接格式：redis://@主机:端口/数据库编号
-uri = "redis://@10.13.1.12:6380/8"
+uri = "redis://@10.13.1.11:6380/8"
 max_age = "24h"  # 缓存24小时
 ttl = "259200"
 
