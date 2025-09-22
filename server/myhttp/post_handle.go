@@ -2,10 +2,9 @@ package myhttp
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
-	"os"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -13,8 +12,10 @@ import (
 )
 
 type PostHandle struct {
-	bounds                 []float64
-	xMin, yMin, xMax, yMax int32
+	bounds     []float64
+	totalTiles int
+	completed  int
+	mutex      sync.Mutex
 }
 
 func initGinEngine() {
@@ -34,22 +35,13 @@ func lngLatToTile(lng, lat float64, zoom int) (x, y int) {
 	return x, y
 }
 func NewHandle(bounds []float64, task_id string) *PostHandle {
-	zoom := 14
-	xMin, yMax := lngLatToTile(bounds[0], bounds[1], zoom)
-	xMax, yMin := lngLatToTile(bounds[2], bounds[3], zoom)
-	fmt.Print(xMin, yMin, xMax, yMin)
-	log.Infof("xMax=%v, yMax=%v,xMin=%v,yMin=%v", xMax, yMax, xMin, yMin)
 	return &PostHandle{
 		bounds: bounds,
-		xMin:   int32(xMin),
-		yMin:   int32(yMin),
-		xMax:   int32(xMax),
-		yMax:   int32(yMax),
 	}
 }
 
-// 下载单个瓦片
-func downloadTile(z, x, y int, taskID string, wg *sync.WaitGroup, sem chan struct{}) {
+// 请求单个瓦片（让数据进入Redis缓存）
+func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGroup, sem chan struct{}) {
 	defer wg.Done()
 	sem <- struct{}{}
 	defer func() { <-sem }()
@@ -60,36 +52,98 @@ func downloadTile(z, x, y int, taskID string, wg *sync.WaitGroup, sem chan struc
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Errorf("请求失败: %v", err)
+		handle.updateProgress()
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.Errorf("请求错误: %v", resp.Status)
+		log.Errorf("请求错误 %s: %v", url, resp.Status)
+		handle.updateProgress()
 		return
 	}
 
-	data, _ := ioutil.ReadAll(resp.Body)
-	filename := fmt.Sprintf("%d_%d_%d.pbf", z, x, y)
-	err = os.WriteFile(filename, data, 0644)
+	// 只读取响应内容以确保请求完整，但不保存到文件
+	// 这样数据会被Tegola处理并存入Redis缓存
+	_, err = io.ReadAll(resp.Body)
 	if err != nil {
-		log.Errorf("写文件失败: %v", err)
+		log.Errorf("读取响应失败: %v", err)
+		handle.updateProgress()
+		return
 	}
-	log.Infof("成功下载: %s", filename)
+
+	handle.updateProgress()
+	log.Infof("成功请求瓦片 Z:%d X:%d Y:%d (已缓存到Redis) 进度: %d/%d", z, x, y, handle.completed, handle.totalTiles)
 }
 
-// 新增方法：并发调用服务，下载瓦片
-func (h *PostHandle) FetchTiles(taskID string, zoom int) {
+// 更新进度
+func (h *PostHandle) updateProgress() {
+	h.mutex.Lock()
+	h.completed++
+	h.mutex.Unlock()
+
+	// 广播进度更新
+	BroadcastProgress()
+}
+
+// 获取进度
+func (h *PostHandle) GetProgress() (completed, total int, percentage float64) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	if h.totalTiles > 0 {
+		percentage = float64(h.completed) / float64(h.totalTiles) * 100
+	}
+	return h.completed, h.totalTiles, percentage
+}
+
+// 请求瓦片（缓存到Redis）
+func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 	sem := make(chan struct{}, 5) // 限制并发数
 	var wg sync.WaitGroup
 
-	for x := h.xMin; x <= h.xMax; x++ {
-		for y := h.yMin; y <= h.yMax; y++ {
-			wg.Add(1)
-			go downloadTile(zoom, int(x), int(y), taskID, &wg, sem)
+	// 先计算总瓦片数
+	h.totalTiles = 0
+	for _, zoom := range zooms {
+		xMin, yMax := lngLatToTile(h.bounds[0], h.bounds[1], zoom)
+		xMax, yMin := lngLatToTile(h.bounds[2], h.bounds[3], zoom)
+		tileCount := (xMax - xMin + 1) * (yMax - yMin + 1)
+		h.totalTiles += tileCount
+		log.Infof("Zoom=%d: xMin=%d, yMin=%d, xMax=%d, yMax=%d, 瓦片数: %d", zoom, xMin, yMin, xMax, yMax, tileCount)
+	}
+
+	log.Infof("总瓦片数: %d", h.totalTiles)
+	h.completed = 0
+
+	// 开始请求瓦片
+	for _, zoom := range zooms {
+		xMin, yMax := lngLatToTile(h.bounds[0], h.bounds[1], zoom)
+		xMax, yMin := lngLatToTile(h.bounds[2], h.bounds[3], zoom)
+
+		for x := xMin; x <= xMax; x++ {
+			for y := yMin; y <= yMax; y++ {
+				wg.Add(1)
+				go requestTile(zoom, x, y, taskID, h, &wg, sem)
+			}
 		}
 	}
 
 	wg.Wait()
-	log.Infof("所有任务完成 ✅")
+	log.Infof("所有任务完成，总共处理 %d 个瓦片", h.totalTiles)
+}
+
+func HandleZoom(zoomRange []int) []int {
+	if len(zoomRange) != 2 {
+		return nil
+	}
+	min, max := zoomRange[0], zoomRange[1]
+
+	if min > max {
+		min, max = max, min
+	}
+
+	zooms := make([]int, 0, max-min+1)
+	for z := min; z <= max; z++ {
+		zooms = append(zooms, z)
+	}
+	return zooms
 }

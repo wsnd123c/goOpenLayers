@@ -458,7 +458,6 @@ func CreateProvider(
 	}
 
 	name, err := config.String(ConfigKeyName, nil)
-	fmt.Println("这是我的name", name)
 	if err != nil {
 		return nil, err
 	}
