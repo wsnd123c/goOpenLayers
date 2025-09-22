@@ -179,7 +179,7 @@ func handleConfigUpdate(app source.App) {
 
 	// register new providers
 	providers, err := register.Providers(provArr, app.Maps, nil, nil)
-	fmt.Println("这是provArr:%+v", provArr)
+	fmt.Printf("这是provArr:%+v\n", provArr)
 	if err != nil {
 		log.Errorf("Failed to register providers for app %s: %v", app.Key, err)
 		return
