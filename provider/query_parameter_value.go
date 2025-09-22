@@ -32,7 +32,7 @@ type Params map[string]QueryParameterValue
 // within the provided SQL string
 func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 	if params == nil {
-		log.Warn("ReplaceParams called with nil params")
+		//log.Warn("ReplaceParams called with nil params")
 		return sql
 	}
 
@@ -55,7 +55,7 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 					continue
 				}
 
-				log.Infof("Replacing token %s with table: %s", token, tableName)
+				//log.Infof("Replacing token %s with table: %s", token, tableName)
 				sql = strings.ReplaceAll(sql, token, tableName)
 			} else {
 				log.Warn(" param not found in request")
@@ -99,7 +99,7 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 		sql = strings.ReplaceAll(sql, token, resultSQL)
 	}
 
-	log.Infof("Final SQL after ReplaceParams:\n%s", sql)
+	//log.Infof("Final SQL after ReplaceParams:\n%s", sql)
 	return sql
 }
 func getColumnsFromDB(ctx context.Context, pool *pgxpool.Pool, tableName, geomField string) (string, error) {
@@ -181,7 +181,7 @@ func (params Params) ReplaceParamsWithColumns(
 				if err != nil {
 					return "", fmt.Errorf("failed to get columns for table %s: %w", tableName, err)
 				}
-				log.Infof("Replacing token %s with columns: %s", token, colList)
+				//log.Infof("Replacing token %s with columns: %s", token, colList)
 				sql = strings.ReplaceAll(sql, token, colList)
 			} else {
 				log.Warn(" param not found for !COLUMNS!")

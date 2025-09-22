@@ -12,6 +12,7 @@ import (
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/internal/log"
 )
 
 const CacheType = "redis"
@@ -153,51 +154,33 @@ type RedisCache struct {
 }
 
 func (rdc *RedisCache) Set(ctx context.Context, key *cache.Key, val []byte) error {
-	fmt.Printf("RedisCache.Set called for key: %s, data size: %d bytes, MaxZoom: %d\n", key.String(), len(val), rdc.MaxZoom)
-
 	if key.Z > rdc.MaxZoom {
-		fmt.Printf("RedisCache.Set: skipping cache due to zoom level %d > MaxZoom %d\n", key.Z, rdc.MaxZoom)
 		return nil
 	}
 
 	keyStr := key.String()
-	fmt.Printf("RedisCache.Set: About to call Redis.Set with key: '%s', expiration: %v\n", keyStr, rdc.Expiration)
-	fmt.Printf("RedisCache.Set: Redis client database: %d\n", rdc.Redis.Options().DB)
-
 	err := rdc.Redis.Set(ctx, keyStr, val, rdc.Expiration).Err()
 	if err != nil {
-		fmt.Printf("RedisCache.Set error: %v\n", err)
+		log.Errorf("Redis缓存写入失败: key=%s, error=%v", keyStr, err)
 	} else {
-		fmt.Printf("RedisCache.Set success for key: %s\n", keyStr)
-
-		// 验证数据是否真的写入了
-		testVal, testErr := rdc.Redis.Get(ctx, keyStr).Bytes()
-		if testErr != nil {
-			fmt.Printf("RedisCache.Set verification failed - cannot read back key: %v\n", testErr)
-		} else {
-			fmt.Printf("RedisCache.Set verification success - read back %d bytes\n", len(testVal))
-		}
-
-		// 检查键是否真的存在
-		exists := rdc.Redis.Exists(ctx, keyStr).Val()
-		fmt.Printf("RedisCache.Set: Key exists check: %d\n", exists)
-
-		// 获取键的 TTL
-		ttl := rdc.Redis.TTL(ctx, keyStr).Val()
-		fmt.Printf("RedisCache.Set: Key TTL: %v\n", ttl)
+		log.Infof("Redis缓存写入成功: key=%s, size=%d bytes", keyStr, len(val))
 	}
 	return err
 }
 
 func (rdc *RedisCache) Get(ctx context.Context, key *cache.Key) (val []byte, hit bool, err error) {
-	val, err = rdc.Redis.Get(ctx, key.String()).Bytes()
+	keyStr := key.String()
+	val, err = rdc.Redis.Get(ctx, keyStr).Bytes()
 
 	switch err {
 	case nil: // cache hit
+		log.Infof("Redis缓存命中: key=%s, size=%d bytes", keyStr, len(val))
 		return val, true, nil
 	case redis.Nil: // cache miss
+		log.Infof("Redis缓存未命中: key=%s", keyStr)
 		return val, false, nil
 	default: // error
+		log.Errorf("Redis缓存读取错误: key=%s, error=%v", keyStr, err)
 		return val, false, err
 	}
 }

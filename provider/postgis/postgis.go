@@ -1156,8 +1156,6 @@ func (p Provider) MVTForLayers(
 			featureIDName,
 			sql,
 		))
-		fmt.Println(featureIDName)
-		fmt.Printf("%s\n", sqls)
 	}
 
 	subsqls := strings.Join(sqls, "||")
