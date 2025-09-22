@@ -46,7 +46,7 @@ func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGr
 	sem <- struct{}{}
 	defer func() { <-sem }()
 
-	url := fmt.Sprintf("http://127.0.0.1:19091/maps/inference_database/%d/%d/%d.pbf?task_id=%s&isSlice=true",
+	url := fmt.Sprintf("http://127.0.0.1:19091/maps/inference_database/%d/%d/%d.pbf?task_id=%s",
 		z, x, y, taskID)
 
 	resp, err := http.Get(url)
