@@ -194,7 +194,7 @@ func scheme(r *http.Request) string {
 		return "https"
 	}
 
-	return "myhttp"
+	return "http"
 }
 
 // URLRoot builds a string containing the scheme, host and port based on a combination of user defined values,
