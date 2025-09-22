@@ -113,16 +113,16 @@ func TestScheme(t *testing.T) {
 	}
 
 	tests := map[string]tcase{
-		"http no proxyProtocol": {
+		"myhttp no proxyProtocol": {
 			request:  http.Request{},
-			expected: "http",
+			expected: "myhttp",
 		},
-		"http with http proxyProtocol": {
+		"myhttp with myhttp proxyProtocol": {
 			request:       http.Request{},
-			proxyProtocol: "http",
-			expected:      "http",
+			proxyProtocol: "myhttp",
+			expected:      "myhttp",
 		},
-		"http with https proxyProtocol": {
+		"myhttp with https proxyProtocol": {
 			request:       http.Request{},
 			proxyProtocol: "https",
 			expected:      "https",
@@ -133,12 +133,12 @@ func TestScheme(t *testing.T) {
 			},
 			expected: "https",
 		},
-		"https with http proxyProtocol": {
+		"https with myhttp proxyProtocol": {
 			request: http.Request{
 				TLS: &tls.ConnectionState{},
 			},
-			proxyProtocol: "http",
-			expected:      "http",
+			proxyProtocol: "myhttp",
+			expected:      "myhttp",
 		},
 		"https with empty proxyProtocol": {
 			request: http.Request{
@@ -152,29 +152,29 @@ func TestScheme(t *testing.T) {
 				Header: map[string][]string{
 					"X-Forwarded-Proto": {
 						"https",
-						"http",
+						"myhttp",
 					},
 				},
 			},
 			expected: "https",
 		},
-		"x-forwarded-proto with http proxyProtocol": {
+		"x-forwarded-proto with myhttp proxyProtocol": {
 			request: http.Request{
 				Header: map[string][]string{
 					"X-Forwarded-Proto": {
 						"https",
-						"http",
+						"myhttp",
 					},
 				},
 			},
-			proxyProtocol: "http",
-			expected:      "http",
+			proxyProtocol: "myhttp",
+			expected:      "myhttp",
 		},
-		"http x-forwarded-proto with https proxyProtocol": {
+		"myhttp x-forwarded-proto with https proxyProtocol": {
 			request: http.Request{
 				Header: map[string][]string{
 					"X-Forwarded-Proto": {
-						"http",
+						"myhttp",
 					},
 				},
 			},

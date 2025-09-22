@@ -162,6 +162,7 @@ func (rdc *RedisCache) Set(ctx context.Context, key *cache.Key, val []byte) erro
 
 	keyStr := key.String()
 	fmt.Printf("RedisCache.Set: About to call Redis.Set with key: '%s', expiration: %v\n", keyStr, rdc.Expiration)
+	fmt.Printf("RedisCache.Set: Redis client database: %d\n", rdc.Redis.Options().DB)
 
 	err := rdc.Redis.Set(ctx, keyStr, val, rdc.Expiration).Err()
 	if err != nil {
@@ -176,6 +177,14 @@ func (rdc *RedisCache) Set(ctx context.Context, key *cache.Key, val []byte) erro
 		} else {
 			fmt.Printf("RedisCache.Set verification success - read back %d bytes\n", len(testVal))
 		}
+
+		// 检查键是否真的存在
+		exists := rdc.Redis.Exists(ctx, keyStr).Val()
+		fmt.Printf("RedisCache.Set: Key exists check: %d\n", exists)
+
+		// 获取键的 TTL
+		ttl := rdc.Redis.TTL(ctx, keyStr).Val()
+		fmt.Printf("RedisCache.Set: Key TTL: %v\n", ttl)
 	}
 	return err
 }

@@ -28,7 +28,7 @@ var (
 func init() {
 	// root
 	RootCmd.PersistentFlags().StringVar(&configFile, "config", "config.toml",
-		"path or http url to a config file, or \"-\" for stdin")
+		"path or myhttp url to a config file, or \"-\" for stdin")
 	RootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "INFO",
 		"set log level to: DEBUG, INFO, WARN, ERROR or SILENT")
 
@@ -94,7 +94,7 @@ func initConfig(configFile string, cacheRequired bool, logLevel string) (err err
 		provArr[i] = conf.Providers[i]
 	}
 
-	providers, err := register.Providers(provArr, conf.Maps, nil)
+	providers, err := register.Providers(provArr, conf.Maps, nil, nil)
 	if err != nil {
 		return fmt.Errorf("could not register providers: %v", err)
 	}

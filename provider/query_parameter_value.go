@@ -224,7 +224,7 @@ func (params Params) ReplaceParamsWithColumns(
 		cache[token] = resultSQL
 		sql = strings.ReplaceAll(sql, token, resultSQL)
 	}
-
-	log.Infof("Final SQL after ReplaceParamsWithColumns:\n%s", sql)
+	//打印sql
+	//log.Infof("Final SQL after ReplaceParamsWithColumns:\n%s", sql)
 	return sql, nil
 }

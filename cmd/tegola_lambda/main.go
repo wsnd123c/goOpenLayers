@@ -19,7 +19,7 @@ import (
 	"github.com/go-spatial/tegola/server"
 )
 
-// mux is a reference to the http muxer. it's stored as a package
+// mux is a reference to the myhttp muxer. it's stored as a package
 // var so we can take advantage of Lambda's "Global State".
 var mux *httptreemux.TreeMux
 
@@ -66,7 +66,7 @@ func init() {
 	}
 
 	// register the providers
-	providers, err := register.Providers(provArr, nil, nil)
+	providers, err := register.Providers(provArr, nil, nil, nil)
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)
@@ -115,7 +115,7 @@ func init() {
 		server.URIPrefix = string(conf.Webserver.URIPrefix)
 	}
 
-	// http route setup
+	// myhttp route setup
 	mux = server.NewRouter(nil)
 }
 
@@ -147,7 +147,7 @@ func URLRoot(r *http.Request) *url.URL {
 	return &u
 }
 
-// various checks to determine if the request is http or https. the scheme is needed for the TileJSON URLs
+// various checks to determine if the request is myhttp or https. the scheme is needed for the TileJSON URLs
 // r.URL.Scheme can be empty if a relative request is issued from the client. (i.e. GET /foo.html)
 func scheme(r *http.Request) string {
 	if r.Header.Get("X-Forwarded-Proto") != "" {
@@ -156,5 +156,5 @@ func scheme(r *http.Request) string {
 		return "https"
 	}
 
-	return "http"
+	return "myhttp"
 }

@@ -141,6 +141,7 @@ type Provider struct {
 	srid       uint64
 	firstLayer string
 	task_id    string
+	isSlice    bool
 	// collectorsRegistered keeps track if we have already collectorsRegistered these collectors
 	// as the Collectors function will be called for each map and layer, but
 	// we are going to assign those during runtime, instead of at registration

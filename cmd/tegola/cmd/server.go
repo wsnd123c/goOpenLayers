@@ -168,9 +168,7 @@ func initConfigSource(ctx context.Context) *source.ConfigWatcher {
 }
 
 func handleConfigUpdate(app source.App) {
-	log.Infof("Handling config update for app: %s", app.Key)
-	log.Infof("Providers: %+v", app.Providers)
-	log.Infof("Maps: %+v", app.Maps)
+
 	//这是个map的打印
 	// convert providers to dict.Dicter format
 	provArr := make([]dict.Dicter, len(app.Providers))
@@ -180,7 +178,7 @@ func handleConfigUpdate(app source.App) {
 	}
 
 	// register new providers
-	providers, err := register.Providers(provArr, app.Maps, nil)
+	providers, err := register.Providers(provArr, app.Maps, nil, nil)
 	fmt.Println("这是provArr:%+v", provArr)
 	if err != nil {
 		log.Errorf("Failed to register providers for app %s: %v", app.Key, err)

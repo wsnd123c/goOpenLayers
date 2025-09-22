@@ -66,7 +66,7 @@ func TestHandleCapabilities(t *testing.T) {
 						Capabilities: "http://localhost:8080/capabilities/test-map.json",
 						Tiles: []server.TileURLTemplate{
 							{
-								Scheme:  "http",
+								Scheme:  "myhttp",
 								Host:    "localhost:8080",
 								MapName: "test-map",
 							},
@@ -76,7 +76,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: testLayer1.MVTName(),
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "localhost:8080",
 										MapName:   "test-map",
 										LayerName: testLayer1.MVTName(),
@@ -89,7 +89,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: testLayer2.MVTName(),
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "localhost:8080",
 										MapName:   "test-map",
 										LayerName: testLayer2.MVTName(),
@@ -122,7 +122,7 @@ func TestHandleCapabilities(t *testing.T) {
 						Capabilities: "http://cdn.tegola.io/capabilities/test-map.json?debug=true",
 						Tiles: []server.TileURLTemplate{
 							{
-								Scheme:  "http",
+								Scheme:  "myhttp",
 								Host:    "cdn.tegola.io",
 								MapName: "test-map",
 								Query: url.Values{
@@ -135,7 +135,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: testLayer1.MVTName(),
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: testLayer1.MVTName(),
@@ -151,7 +151,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "test-layer-2-name",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: testLayer2.MVTName(),
@@ -167,7 +167,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "debug-tile-outline",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: "debug-tile-outline",
@@ -183,7 +183,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "debug-tile-center",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: "debug-tile-center",
@@ -213,7 +213,7 @@ func TestHandleCapabilities(t *testing.T) {
 						Capabilities: "http://localhost:8080/capabilities/test-map.json",
 						Tiles: []server.TileURLTemplate{
 							{
-								Scheme:  "http",
+								Scheme:  "myhttp",
 								Host:    "localhost:8080",
 								MapName: "test-map",
 							},
@@ -223,7 +223,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: testLayer1.MVTName(),
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "localhost:8080",
 										MapName:   "test-map",
 										LayerName: testLayer1.MVTName(),
@@ -236,7 +236,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: testLayer2.MVTName(),
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "localhost:8080",
 										MapName:   "test-map",
 										LayerName: testLayer2.MVTName(),
@@ -269,7 +269,7 @@ func TestHandleCapabilities(t *testing.T) {
 						Capabilities: "http://cdn.tegola.io/capabilities/test-map.json?debug=true",
 						Tiles: []server.TileURLTemplate{
 							{
-								Scheme:  "http",
+								Scheme:  "myhttp",
 								Host:    "cdn.tegola.io",
 								MapName: "test-map",
 								Query: url.Values{
@@ -284,7 +284,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: testLayer1.MVTName(),
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: testLayer1.MVTName(),
@@ -302,7 +302,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "test-layer-2-name",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: testLayer2.MVTName(),
@@ -320,7 +320,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "debug-tile-outline",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: "debug-tile-outline",
@@ -338,7 +338,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "debug-tile-center",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: "debug-tile-center",
@@ -375,7 +375,7 @@ func TestHandleCapabilities(t *testing.T) {
 						Capabilities: "http://cdn.tegola.io/capabilities/test-map.json?debug=true",
 						Tiles: []server.TileURLTemplate{
 							{
-								Scheme:  "http",
+								Scheme:  "myhttp",
 								Host:    "cdn.tegola.io",
 								MapName: "test-map",
 								Query: url.Values{
@@ -388,7 +388,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: testLayer1.MVTName(),
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: testLayer1.MVTName(),
@@ -404,7 +404,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "test-layer-2-name",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: testLayer2.MVTName(),
@@ -420,7 +420,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "debug-tile-outline",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: "debug-tile-outline",
@@ -436,7 +436,7 @@ func TestHandleCapabilities(t *testing.T) {
 								Name: "debug-tile-center",
 								Tiles: []server.TileURLTemplate{
 									{
-										Scheme:    "http",
+										Scheme:    "myhttp",
 										Host:      "cdn.tegola.io",
 										MapName:   "test-map",
 										LayerName: "debug-tile-center",

@@ -76,8 +76,8 @@ func init() {
 // 		max_zoom (int): max zoom to use the cache. beyond this zoom cache Set() calls will be ignored
 // 		endpoint (string): the endpoint where the S3 compliant backend is located. only necessary for non-AWS deployments. defaults to ''
 //  	access_control_list (string): the S3 access control to set on the file when putting the file. defaults to ''.
-//  	cache_control (string): the http cache-control header to set on the file when putting the file. defaults to ''.
-//  	content_type (string): the http MIME-type set on the file when putting the file. defaults to 'application/vnd.mapbox-vector-tile'.
+//  	cache_control (string): the myhttp cache-control header to set on the file when putting the file. defaults to ''.
+//  	content_type (string): the myhttp MIME-type set on the file when putting the file. defaults to 'application/vnd.mapbox-vector-tile'.
 
 func New(config dict.Dicter) (cache.Interface, error) {
 	var err error
@@ -196,7 +196,7 @@ func New(config dict.Dicter) (cache.Interface, error) {
 			r.HTTPRequest.URL.Host = reqSigningHost
 		})
 		s3cache.Client.Handlers.Sign.PushBack(func(r *request.Request) {
-			// If the endpoint variable contains the http(s) protocol prefix,
+			// If the endpoint variable contains the myhttp(s) protocol prefix,
 			// we need to sanitize it before adding it back.
 			endpoint = strings.TrimPrefix(strings.TrimPrefix(endpoint, "http://"), "https://")
 			r.HTTPRequest.URL.Host = endpoint
@@ -294,7 +294,7 @@ type Cache struct {
 	// ACL is the aws ACL, if the not set it will use the default value for aws.
 	ACL string
 
-	// CacheControl is the http Cache Control header, if the not set it will use the default value for aws.
+	// CacheControl is the myhttp Cache Control header, if the not set it will use the default value for aws.
 	CacheControl string
 
 	// ContentType is MIME content type of the tile. Default is "application/vnd.mapbox-vector-tile"

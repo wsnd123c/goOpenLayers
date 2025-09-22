@@ -75,7 +75,7 @@ func TestHandleMapStyle(t *testing.T) {
 					testMapName: {
 						Type: style.SourceTypeVector,
 						URL: (&url.URL{
-							Scheme: "http",
+							Scheme: "myhttp",
 							Host:   serverHostName,
 							Path:   path.Join(server.URIPrefix, "capabilities", testMapName+".json"),
 						}).String(),
@@ -125,7 +125,7 @@ func TestHandleMapStyle(t *testing.T) {
 					testMapName: {
 						Type: style.SourceTypeVector,
 						URL: (&url.URL{
-							Scheme: "http",
+							Scheme: "myhttp",
 							Host:   serverHostName,
 							Path:   path.Join(server.URIPrefix, "tegola", "capabilities", testMapName+".json"),
 						}).String(),

@@ -325,7 +325,7 @@ func TestBuildUri(t *testing.T) {
 					ConfigKeyURI: "http://hi.de",
 				},
 			},
-			err: "postgis: invalid uri (invalid connection scheme (http))",
+			err: "postgis: invalid uri (invalid connection scheme (myhttp))",
 		},
 		"invalid uri missing user": {
 			TCConfig: TCConfig{

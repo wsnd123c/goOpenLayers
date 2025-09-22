@@ -52,7 +52,7 @@ var blacklistHeaders = []string{"content-encoding", "content-length", "content-t
 type Config struct {
 	// the tile buffer to use
 	TileBuffer *env.Int `toml:"tile_buffer"`
-	// LocationName is the file name or http server that the config was read from.
+	// LocationName is the file name or myhttp server that the config was read from.
 	// If this is an empty string, it means that the location was unknown. This is the case if
 	// the Parse() function is used directly.
 	LocationName    string
@@ -386,16 +386,16 @@ func Parse(reader io.Reader, location string) (conf Config, err error) {
 func Load(location string) (conf Config, err error) {
 	var reader io.Reader
 
-	// check for http prefix
-	if strings.HasPrefix(location, "http") {
+	// check for myhttp prefix
+	if strings.HasPrefix(location, "myhttp") {
 		log.Infof("loading remote config (%v)", location)
 
-		// setup http client with a timeout
+		// setup myhttp client with a timeout
 		var httpClient = &http.Client{
 			Timeout: time.Second * 10,
 		}
 
-		// make the http request
+		// make the myhttp request
 		res, err := httpClient.Get(location)
 		if err != nil {
 			return conf, fmt.Errorf("error fetching remote config file (%v): %v ", location, err)

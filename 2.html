@@ -32,18 +32,31 @@
                     attributions: '© OpenStreetMap contributors',
                     format: new ol.format.MVT(),
                     tileGrid: ol.tilegrid.createXYZ({ maxZoom: 22 }),
-                    url: "http://127.0.0.1:19089/maps/inference_database/{z}/{x}/{y}.pbf?taskId=grounds",
+                    url: "http://127.0.0.1:19091/maps/inference_database/{z}/{x}/{y}.pbf?task_id=irsad3fb309a42144c8a9625cd7ff2e322cf",
                 }),
                 // 矢量数据样式
-                style: new ol.style.Style({
-                    stroke: new ol.style.Stroke({
-                        color: 'red',
-                        width: 2
-                    }),
-                    fill: new ol.style.Fill({
-                        color: 'rgba(255, 0, 0, 0.1)'
-                    })
-                })
+                style: function (feature) {
+                    var geomType = feature.getGeometry().getType();
+                    if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+                        return new ol.style.Style({
+                            stroke: new ol.style.Stroke({ color: 'red', width: 2 }),
+                            fill: new ol.style.Fill({ color: 'rgba(255, 0, 0, 0.3)' })
+                        });
+                    } else if (geomType === 'LineString' || geomType === 'MultiLineString') {
+                        return new ol.style.Style({
+                            stroke: new ol.style.Stroke({ color: 'blue', width: 2 })
+                        });
+                    } else if (geomType === 'Point' || geomType === 'MultiPoint') {
+                        return new ol.style.Style({
+                            image: new ol.style.Circle({
+                                radius: 5,
+                                fill: new ol.style.Fill({ color: 'green' }),
+                                stroke: new ol.style.Stroke({ color: 'white', width: 1 })
+                            })
+                        });
+                    }
+                }
+
             })
         ],
         target: "map",

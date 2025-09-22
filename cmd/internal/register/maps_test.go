@@ -29,7 +29,7 @@ func TestMaps(t *testing.T) {
 				provArr[i] = tc.providers[i]
 			}
 
-			providers, err := register.Providers(provArr, tc.maps, nil)
+			providers, err := register.Providers(provArr, tc.maps, nil, nil)
 			if err != nil {
 				t.Errorf("unexpected err: %v", err)
 				return
@@ -166,12 +166,12 @@ func TestSanitizeAttribution(t *testing.T) {
 			expected: `&lt;script&gt;true&lt;/script&gt;`,
 		},
 		"link must not escaped": {
-			input:    `<a href="http://example.com">foo</a>`,
-			expected: `<a href="http://example.com">foo</a>`,
+			input:    `<a href="myhttp://example.com">foo</a>`,
+			expected: `<a href="myhttp://example.com">foo</a>`,
 		},
 		"2 links": {
-			input:    `foo <a href="http://example.com">bar</a> - <a href="http://example.com" target="_blank">zoo</a>`,
-			expected: `foo <a href="http://example.com">bar</a> - <a href="http://example.com" target="_blank">zoo</a>`,
+			input:    `foo <a href="myhttp://example.com">bar</a> - <a href="myhttp://example.com" target="_blank">zoo</a>`,
+			expected: `foo <a href="myhttp://example.com">bar</a> - <a href="myhttp://example.com" target="_blank">zoo</a>`,
 		},
 	}
 
