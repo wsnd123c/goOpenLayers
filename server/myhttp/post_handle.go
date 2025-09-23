@@ -6,16 +6,19 @@ import (
 	"math"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-spatial/tegola/internal/log"
 )
 
 type PostHandle struct {
-	bounds     []float64
-	totalTiles int
-	completed  int
-	mutex      sync.Mutex
+	bounds          []float64
+	totalTiles      int
+	completed       int
+	mutex           sync.Mutex
+	lastBroadcast   int
+	broadcastTicker *time.Ticker
 }
 
 func initGinEngine() {
@@ -36,7 +39,8 @@ func lngLatToTile(lng, lat float64, zoom int) (x, y int) {
 }
 func NewHandle(bounds []float64, task_id string) *PostHandle {
 	return &PostHandle{
-		bounds: bounds,
+		bounds:        bounds,
+		lastBroadcast: 0,
 	}
 }
 
@@ -46,10 +50,14 @@ func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGr
 	sem <- struct{}{}
 	defer func() { <-sem }()
 
+	client := &http.Client{
+		Timeout: 30 * time.Second, // 增加超时时间到30秒，避免数据库查询超时
+	}
+
 	url := fmt.Sprintf("http://127.0.0.1:19091/maps/inference_database/%d/%d/%d.pbf?task_id=%s&isSlice=true",
 		z, x, y, taskID)
 
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		log.Errorf("请求失败: %v", err)
 		handle.updateProgress()
@@ -63,8 +71,6 @@ func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGr
 		return
 	}
 
-	// 只读取响应内容以确保请求完整，但不保存到文件
-	// 这样数据会被Tegola处理并存入Redis缓存
 	_, err = io.ReadAll(resp.Body)
 	if err != nil {
 		log.Errorf("读取响应失败: %v", err)
@@ -73,17 +79,32 @@ func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGr
 	}
 
 	handle.updateProgress()
-	log.Infof("成功请求瓦片 Z:%d X:%d Y:%d (已缓存到Redis) 进度: %d/%d", z, x, y, handle.completed, handle.totalTiles)
+	log.Infof("成功请求瓦片 Z:%d X:%d Y:%d (已缓存到Redis) 进度: %d/%d",
+		z, x, y, handle.completed, handle.totalTiles)
 }
 
 // 更新进度
 func (h *PostHandle) updateProgress() {
 	h.mutex.Lock()
 	h.completed++
+	shouldBroadcast := false
+
+	// 只在完成数量变化较大时才广播（每10个瓦片或每5%进度）
+	if h.totalTiles > 0 {
+		progressDiff := h.completed - h.lastBroadcast
+		percentageDiff := float64(progressDiff) / float64(h.totalTiles) * 100
+
+		if progressDiff >= 10 || percentageDiff >= 5.0 || h.completed == h.totalTiles {
+			shouldBroadcast = true
+			h.lastBroadcast = h.completed
+		}
+	}
 	h.mutex.Unlock()
 
-	// 广播进度更新
-	BroadcastProgress()
+	// 只在需要时广播进度更新
+	if shouldBroadcast {
+		BroadcastProgress()
+	}
 }
 
 // 获取进度
@@ -93,12 +114,14 @@ func (h *PostHandle) GetProgress() (completed, total int, percentage float64) {
 	if h.totalTiles > 0 {
 		percentage = float64(h.completed) / float64(h.totalTiles) * 100
 	}
+	// 减少日志输出频率，只在Debug模式下输出
+	// log.Infof("[GetProgress] 已完成 %d / %d (%.2f%%)", h.completed, h.totalTiles, percentage)
 	return h.completed, h.totalTiles, percentage
 }
 
 // 请求瓦片（缓存到Redis）
 func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
-	sem := make(chan struct{}, 5) // 限制并发数
+	sem := make(chan struct{}, 15) // 增加并发数，与数据库连接池匹配
 	var wg sync.WaitGroup
 
 	// 先计算总瓦片数
@@ -113,8 +136,16 @@ func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 
 	log.Infof("总瓦片数: %d", h.totalTiles)
 	h.completed = 0
+	h.lastBroadcast = 0
+
+	// 异步发送初始进度广播，避免阻塞主流程
+	go func() {
+		time.Sleep(100 * time.Millisecond) // 稍微延迟，确保任务已经开始
+		BroadcastProgress()
+	}()
 
 	// 开始请求瓦片
+	log.Infof("开始处理 %d 个缩放级别的瓦片", len(zooms))
 	for _, zoom := range zooms {
 		xMin, yMax := lngLatToTile(h.bounds[0], h.bounds[1], zoom)
 		xMax, yMin := lngLatToTile(h.bounds[2], h.bounds[3], zoom)
@@ -127,8 +158,12 @@ func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 		}
 	}
 
+	log.Infof("等待所有 %d 个瓦片请求完成...", h.totalTiles)
 	wg.Wait()
 	log.Infof("所有任务完成，总共处理 %d 个瓦片", h.totalTiles)
+
+	// 发送最终进度广播
+	BroadcastProgress()
 }
 
 func HandleZoom(zoomRange []int) []int {

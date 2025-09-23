@@ -59,14 +59,18 @@ func initSocketIOServer() {
 
 	// 监听连接事件
 	socketServer.OnConnect("/", func(s socketio.Conn) error {
-		log.Info("新的Socket.IO客户端连接: ", s.ID())
+		log.Infof("新的Socket.IO客户端连接: %s", s.ID())
 
 		// 注册客户端
 		socketClientsMutex.Lock()
 		socketClients[s] = true
+		clientCount := len(socketClients)
 		socketClientsMutex.Unlock()
 
+		log.Infof("当前连接的客户端数量: %d", clientCount)
+
 		// 发送当前进度
+		log.Infof("向新客户端 %s 发送当前进度", s.ID())
 		sendCurrentProgress(s)
 
 		return nil
@@ -84,7 +88,7 @@ func initSocketIOServer() {
 
 	// 监听进度请求事件
 	socketServer.OnEvent("/", "get_progress", func(s socketio.Conn, msg string) {
-		log.Info("客户端请求进度更新: ", s.ID())
+		log.Infof("客户端 %s 请求进度更新，消息: %s", s.ID(), msg)
 		sendCurrentProgress(s)
 	})
 
@@ -183,6 +187,8 @@ func sendCurrentProgress(conn socketio.Conn) {
 			"percentage": 0.0,
 			"isRunning":  false,
 		}
+		log.Infof("[sendCurrentProgress] 无当前任务，发送默认进度给客户端 %s", conn.ID())
+
 	} else {
 		completed, total, percentage := handle.GetProgress()
 		isRunning := completed < total
@@ -195,9 +201,13 @@ func sendCurrentProgress(conn socketio.Conn) {
 			"percentage": percentage,
 			"isRunning":  isRunning,
 		}
+		log.Infof("[sendCurrentProgress] 发送任务进度给客户端 %s: 已完成 %d / %d (%.2f%%) isRunning=%v",
+			conn.ID(), completed, total, percentage, isRunning)
 	}
 
+	log.Infof("[sendCurrentProgress] 准备发送消息给客户端 %s: %+v", conn.ID(), message)
 	conn.Emit("progress", message)
+
 }
 
 // 广播进度更新给所有客户端
@@ -207,6 +217,7 @@ func BroadcastProgress() {
 	handleMutex.Unlock()
 
 	if handle == nil {
+		log.Infof("[BroadcastProgress] 没有当前任务，跳过广播")
 		return
 	}
 
@@ -224,10 +235,26 @@ func BroadcastProgress() {
 	}
 
 	socketClientsMutex.Lock()
+	clientCount := len(socketClients)
+	socketClientsMutex.Unlock()
+
+	log.Infof("[BroadcastProgress] 准备广播进度给 %d 个客户端: %d/%d (%.2f%%)",
+		clientCount, completed, total, percentage)
+
+	socketClientsMutex.Lock()
 	defer socketClientsMutex.Unlock()
 
 	for conn := range socketClients {
-		conn.Emit("progress", message)
+		// 异步发送，避免阻塞主流程
+		go func(c socketio.Conn) {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Errorf("Socket广播失败给客户端 %s: %v", c.ID(), r)
+				}
+			}()
+
+			c.Emit("progress", message)
+		}(conn)
 	}
 }
 
