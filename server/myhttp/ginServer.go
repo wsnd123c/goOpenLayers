@@ -7,7 +7,11 @@ import (
 	"github.com/dimfeld/httptreemux"
 	"github.com/gin-gonic/gin"
 	"github.com/go-spatial/tegola/internal/log"
-	"github.com/gorilla/websocket"
+	socketio "github.com/googollee/go-socket.io"
+	"github.com/googollee/go-socket.io/engineio"
+	"github.com/googollee/go-socket.io/engineio/transport"
+	"github.com/googollee/go-socket.io/engineio/transport/polling"
+	"github.com/googollee/go-socket.io/engineio/transport/websocket"
 )
 
 type ginHandler struct {
@@ -17,23 +21,78 @@ type ginHandler struct {
 var ginRouter *gin.Engine
 var currentHandle *PostHandle
 var handleMutex sync.Mutex
-var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // 允许跨域
-	},
-}
-var wsClients = make(map[*websocket.Conn]bool)
-var wsClientsMutex sync.Mutex
+var socketServer *socketio.Server
+var socketClients = make(map[socketio.Conn]bool)
+var socketClientsMutex sync.Mutex
 
 // 初始化Gin并挂载到主路由
 func InitGin(mainRouter *httptreemux.TreeMux) {
 	initGinEngine()
+	initSocketIOServer()
 	registerGinRoutes()
 	mountToMainRouter(mainRouter)
 	log.Info("Gin integration initialized")
 }
 func (h *ginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.engine.ServeHTTP(w, r)
+}
+
+// 初始化Socket.IO服务器
+func initSocketIOServer() {
+	// 配置Socket.IO服务器选项
+	opts := &engineio.Options{
+		Transports: []transport.Transport{
+			&polling.Transport{
+				CheckOrigin: func(r *http.Request) bool {
+					return true // 允许跨域
+				},
+			},
+			&websocket.Transport{
+				CheckOrigin: func(r *http.Request) bool {
+					return true // 允许跨域
+				},
+			},
+		},
+	}
+
+	socketServer = socketio.NewServer(opts)
+
+	// 监听连接事件
+	socketServer.OnConnect("/", func(s socketio.Conn) error {
+		log.Info("新的Socket.IO客户端连接: ", s.ID())
+
+		// 注册客户端
+		socketClientsMutex.Lock()
+		socketClients[s] = true
+		socketClientsMutex.Unlock()
+
+		// 发送当前进度
+		sendCurrentProgress(s)
+
+		return nil
+	})
+
+	// 监听断开连接事件
+	socketServer.OnDisconnect("/", func(s socketio.Conn, reason string) {
+		log.Infof("Socket.IO客户端断开连接: %s, 原因: %s", s.ID(), reason)
+
+		// 移除客户端
+		socketClientsMutex.Lock()
+		delete(socketClients, s)
+		socketClientsMutex.Unlock()
+	})
+
+	// 监听进度请求事件
+	socketServer.OnEvent("/", "get_progress", func(s socketio.Conn, msg string) {
+		log.Info("客户端请求进度更新: ", s.ID())
+		sendCurrentProgress(s)
+	})
+
+	go func() {
+		if err := socketServer.Serve(); err != nil {
+			log.Errorf("Socket.IO服务器启动失败: %v", err)
+		}
+	}()
 }
 
 func registerGinRoutes() {
@@ -92,39 +151,9 @@ func registerGinRoutes() {
 		}
 	})
 
-	// WebSocket进度推送
-	ginRouter.GET("/ws/progress", func(c *gin.Context) {
-		conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			log.Errorf("WebSocket升级失败: %v", err)
-			return
-		}
-		defer conn.Close()
-
-		// 注册客户端
-		wsClientsMutex.Lock()
-		wsClients[conn] = true
-		wsClientsMutex.Unlock()
-
-		log.Info("新的WebSocket客户端连接")
-
-		// 发送当前进度
-		sendCurrentProgress(conn)
-
-		// 保持连接活跃
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				log.Infof("WebSocket客户端断开连接: %v", err)
-				break
-			}
-		}
-
-		// 移除客户端
-		wsClientsMutex.Lock()
-		delete(wsClients, conn)
-		wsClientsMutex.Unlock()
-	})
+	// Socket.IO进度推送
+	ginRouter.GET("/socket.io/*any", gin.WrapH(socketServer))
+	ginRouter.POST("/socket.io/*any", gin.WrapH(socketServer))
 
 	v1 := ginRouter.Group("/v1")
 	{
@@ -138,7 +167,7 @@ func registerGinRoutes() {
 }
 
 // 发送当前进度给单个客户端
-func sendCurrentProgress(conn *websocket.Conn) {
+func sendCurrentProgress(conn socketio.Conn) {
 	handleMutex.Lock()
 	handle := currentHandle
 	handleMutex.Unlock()
@@ -168,9 +197,7 @@ func sendCurrentProgress(conn *websocket.Conn) {
 		}
 	}
 
-	if err := conn.WriteJSON(message); err != nil {
-		log.Errorf("发送WebSocket消息失败: %v", err)
-	}
+	conn.Emit("progress", message)
 }
 
 // 广播进度更新给所有客户端
@@ -196,16 +223,11 @@ func BroadcastProgress() {
 		"isRunning":  isRunning,
 	}
 
-	wsClientsMutex.Lock()
-	defer wsClientsMutex.Unlock()
+	socketClientsMutex.Lock()
+	defer socketClientsMutex.Unlock()
 
-	for conn := range wsClients {
-		if err := conn.WriteJSON(message); err != nil {
-			log.Errorf("发送WebSocket消息失败: %v", err)
-			// 连接已断开，从列表中移除
-			delete(wsClients, conn)
-			conn.Close()
-		}
+	for conn := range socketClients {
+		conn.Emit("progress", message)
 	}
 }
 

@@ -20,26 +20,35 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
+		// Debug: 记录请求信息
+		log.Infof("DEBUG缓存中间件: 处理请求 %s, 查询参数: %s", r.URL.Path, r.URL.RawQuery)
+
 		// check if a cache backend exists
 		cacher := a.GetCache()
 		if cacher == nil {
 			// nope. move on
+			log.Warnf("DEBUG缓存中间件: Atlas中没有缓存实例!")
 			next.ServeHTTP(w, r)
 			return
 		}
 
+		log.Infof("DEBUG缓存中间件: 找到缓存实例，类型: %T", cacher)
+
 		// ignore requests with query parameters (except task_id for dynamic tables)
 		if r.URL.RawQuery != "" && !strings.Contains(r.URL.RawQuery, "task_id=") {
+			log.Infof("DEBUG缓存中间件: 跳过缓存，不支持的查询参数: %s", r.URL.RawQuery)
 			next.ServeHTTP(w, r)
 			return
 		}
+
+		log.Infof("DEBUG缓存中间件: 查询参数检查通过，继续缓存处理")
 
 		// parse our URI into a cache key structure (remove any configured URIPrefix + "maps/" )
 		keyPath := strings.TrimPrefix(r.URL.Path, path.Join(URIPrefix, "maps"))
 
 		key, err := cache.ParseKey(keyPath)
 		if err != nil {
-			log.Errorf("cache middleware: ParseKey err: %v", err)
+			log.Errorf("DEBUG缓存中间件: ParseKey错误: %v, keyPath: %s", err, keyPath)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -48,6 +57,8 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 		if r.URL.RawQuery != "" {
 			key.MapName = key.MapName + "?" + r.URL.RawQuery
 		}
+
+		log.Infof("DEBUG缓存中间件: 缓存key: %s", key.String())
 
 		// use the URL path as the key
 		cachedTile, hit, err := cacher.Get(r.Context(), key)
