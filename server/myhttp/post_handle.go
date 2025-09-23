@@ -19,6 +19,7 @@ type PostHandle struct {
 	mutex           sync.Mutex
 	lastBroadcast   int
 	broadcastTicker *time.Ticker
+	taskID          string // 添加taskID字段
 }
 
 func initGinEngine() {
@@ -41,6 +42,7 @@ func NewHandle(bounds []float64, task_id string) *PostHandle {
 	return &PostHandle{
 		bounds:        bounds,
 		lastBroadcast: 0,
+		taskID:        task_id,
 	}
 }
 
@@ -103,7 +105,7 @@ func (h *PostHandle) updateProgress() {
 
 	// 只在需要时广播进度更新
 	if shouldBroadcast {
-		BroadcastProgress()
+		BroadcastTaskProgress(h.taskID)
 	}
 }
 
@@ -141,7 +143,7 @@ func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 	// 异步发送初始进度广播，避免阻塞主流程
 	go func() {
 		time.Sleep(100 * time.Millisecond) // 稍微延迟，确保任务已经开始
-		BroadcastProgress()
+		BroadcastTaskProgress(h.taskID)
 	}()
 
 	// 开始请求瓦片
@@ -163,7 +165,13 @@ func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 	log.Infof("所有任务完成，总共处理 %d 个瓦片", h.totalTiles)
 
 	// 发送最终进度广播
-	BroadcastProgress()
+	BroadcastTaskProgress(h.taskID)
+
+	// 任务完成后清理handle
+	handleMutex.Lock()
+	delete(currentHandles, h.taskID)
+	handleMutex.Unlock()
+	log.Infof("任务 %s 已清理", h.taskID)
 }
 
 func HandleZoom(zoomRange []int) []int {

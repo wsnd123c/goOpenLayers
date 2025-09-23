@@ -19,7 +19,7 @@ type ginHandler struct {
 }
 
 var ginRouter *gin.Engine
-var currentHandle *PostHandle
+var currentHandles = make(map[string]*PostHandle) // 支持多个任务并发
 var handleMutex sync.Mutex
 var socketServer *socketio.Server
 var socketClients = make(map[socketio.Conn]bool)
@@ -69,10 +69,6 @@ func initSocketIOServer() {
 
 		log.Infof("当前连接的客户端数量: %d", clientCount)
 
-		// 发送当前进度
-		log.Infof("向新客户端 %s 发送当前进度", s.ID())
-		sendCurrentProgress(s)
-
 		return nil
 	})
 
@@ -86,10 +82,32 @@ func initSocketIOServer() {
 		socketClientsMutex.Unlock()
 	})
 
+	// 监听加入房间事件
+	socketServer.OnEvent("/", "join_task", func(s socketio.Conn, data map[string]interface{}) {
+		taskID, ok := data["task_id"].(string)
+		if !ok || taskID == "" {
+			log.Errorf("客户端 %s 加入房间失败：无效的task_id", s.ID())
+			return
+		}
+
+		roomName := "task_" + taskID
+		s.Join(roomName)
+		log.Infof("客户端 %s 加入房间: %s", s.ID(), roomName)
+
+		// 发送该任务的当前进度
+		sendTaskProgress(s, taskID)
+	})
+
 	// 监听进度请求事件
-	socketServer.OnEvent("/", "get_progress", func(s socketio.Conn, msg string) {
-		log.Infof("客户端 %s 请求进度更新，消息: %s", s.ID(), msg)
-		sendCurrentProgress(s)
+	socketServer.OnEvent("/", "get_progress", func(s socketio.Conn, data map[string]interface{}) {
+		taskID, ok := data["task_id"].(string)
+		if !ok || taskID == "" {
+			log.Errorf("客户端 %s 请求进度失败：无效的task_id", s.ID())
+			return
+		}
+
+		log.Infof("客户端 %s 请求任务 %s 的进度更新", s.ID(), taskID)
+		sendTaskProgress(s, taskID)
 	})
 
 	go func() {
@@ -136,9 +154,9 @@ func registerGinRoutes() {
 			zooms := HandleZoom([]int{req.Minzoom, req.Maxzoom})
 			handle := NewHandle(req.Bounds, req.TaskID)
 
-			// 保存当前处理的handle到全局变量
+			// 保存当前处理的handle到对应的task_id
 			handleMutex.Lock()
-			currentHandle = handle
+			currentHandles[req.TaskID] = handle
 			handleMutex.Unlock()
 
 			// 在goroutine中异步处理切片
@@ -170,24 +188,25 @@ func registerGinRoutes() {
 	}
 }
 
-// 发送当前进度给单个客户端
-func sendCurrentProgress(conn socketio.Conn) {
+// 发送特定任务的进度给单个客户端
+func sendTaskProgress(conn socketio.Conn, taskID string) {
 	handleMutex.Lock()
-	handle := currentHandle
+	handle, exists := currentHandles[taskID]
 	handleMutex.Unlock()
 
 	var message map[string]interface{}
-	if handle == nil {
+	if !exists || handle == nil {
 		message = map[string]interface{}{
 			"type":       "progress",
 			"code":       200,
-			"message":    "无正在进行的任务",
+			"message":    "任务不存在或已完成",
+			"task_id":    taskID,
 			"completed":  0,
 			"total":      0,
 			"percentage": 0.0,
 			"isRunning":  false,
 		}
-		log.Infof("[sendCurrentProgress] 无当前任务，发送默认进度给客户端 %s", conn.ID())
+		log.Infof("[sendTaskProgress] 任务 %s 不存在，发送默认进度给客户端 %s", taskID, conn.ID())
 
 	} else {
 		completed, total, percentage := handle.GetProgress()
@@ -196,28 +215,28 @@ func sendCurrentProgress(conn socketio.Conn) {
 			"type":       "progress",
 			"code":       200,
 			"message":    "获取进度成功",
+			"task_id":    taskID,
 			"completed":  completed,
 			"total":      total,
 			"percentage": percentage,
 			"isRunning":  isRunning,
 		}
-		log.Infof("[sendCurrentProgress] 发送任务进度给客户端 %s: 已完成 %d / %d (%.2f%%) isRunning=%v",
-			conn.ID(), completed, total, percentage, isRunning)
+		log.Infof("[sendTaskProgress] 发送任务 %s 进度给客户端 %s: 已完成 %d / %d (%.2f%%) isRunning=%v",
+			taskID, conn.ID(), completed, total, percentage, isRunning)
 	}
 
-	log.Infof("[sendCurrentProgress] 准备发送消息给客户端 %s: %+v", conn.ID(), message)
+	log.Infof("[sendTaskProgress] 准备发送消息给客户端 %s: %+v", conn.ID(), message)
 	conn.Emit("progress", message)
-
 }
 
-// 广播进度更新给所有客户端
-func BroadcastProgress() {
+// 向特定任务的房间广播进度更新
+func BroadcastTaskProgress(taskID string) {
 	handleMutex.Lock()
-	handle := currentHandle
+	handle, exists := currentHandles[taskID]
 	handleMutex.Unlock()
 
-	if handle == nil {
-		log.Infof("[BroadcastProgress] 没有当前任务，跳过广播")
+	if !exists || handle == nil {
+		log.Infof("[BroadcastTaskProgress] 任务 %s 不存在，跳过广播", taskID)
 		return
 	}
 
@@ -228,34 +247,25 @@ func BroadcastProgress() {
 		"type":       "progress",
 		"code":       200,
 		"message":    "进度更新",
+		"task_id":    taskID,
 		"completed":  completed,
 		"total":      total,
 		"percentage": percentage,
 		"isRunning":  isRunning,
 	}
 
-	socketClientsMutex.Lock()
-	clientCount := len(socketClients)
-	socketClientsMutex.Unlock()
+	roomName := "task_" + taskID
+	log.Infof("[BroadcastTaskProgress] 向房间 %s 广播进度: %d/%d (%.2f%%)",
+		roomName, completed, total, percentage)
 
-	log.Infof("[BroadcastProgress] 准备广播进度给 %d 个客户端: %d/%d (%.2f%%)",
-		clientCount, completed, total, percentage)
+	// 向房间广播消息
+	socketServer.BroadcastToRoom("/", roomName, "progress", message)
+}
 
-	socketClientsMutex.Lock()
-	defer socketClientsMutex.Unlock()
-
-	for conn := range socketClients {
-		// 异步发送，避免阻塞主流程
-		go func(c socketio.Conn) {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Errorf("Socket广播失败给客户端 %s: %v", c.ID(), r)
-				}
-			}()
-
-			c.Emit("progress", message)
-		}(conn)
-	}
+// 兼容旧的广播函数（已废弃）
+func BroadcastProgress() {
+	// 这个函数已被 BroadcastTaskProgress 替代
+	log.Infof("[BroadcastProgress] 该函数已废弃，请使用 BroadcastTaskProgress")
 }
 
 func mountToMainRouter(mainRouter *httptreemux.TreeMux) {
