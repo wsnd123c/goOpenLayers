@@ -76,25 +76,36 @@ type Cache struct {
 func (fc *Cache) Get(ctx context.Context, key *cache.Key) ([]byte, bool, error) {
 	path := filepath.Join(fc.Basepath, key.String())
 
+	// 添加调试信息：打印要查找的缓存路径
+	log.Infof("🔍 尝试获取缓存: path=%s, key=%+v", path, key)
+	log.Infof("🔍 缓存键详情: Z=%d, X=%d, Y=%d", key.Z, key.X, key.Y)
+
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			log.Infof("❌ 缓存未命中: 文件不存在 path=%s", path)
 			return nil, false, nil
 		}
 
+		log.Errorf("❌ 打开缓存文件失败: path=%s, error=%v", path, err)
 		return nil, false, err
 	}
 	defer f.Close()
 
 	if err := ctx.Err(); err != nil {
+		log.Errorf("❌ 上下文错误: path=%s, error=%v", path, err)
 		return nil, false, err
 	}
+
+	log.Infof("✅ 文件缓存命中: path=%s", path)
 
 	val, err := io.ReadAll(f)
 	if err != nil {
+		log.Errorf("❌ 读取缓存文件失败: path=%s, error=%v", path, err)
 		return nil, false, err
 	}
 
+	log.Infof("✅ 成功读取缓存: path=%s, 文件大小=%d bytes", path, len(val))
 	return val, true, nil
 }
 

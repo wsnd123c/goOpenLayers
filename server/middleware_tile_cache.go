@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,8 +58,12 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 		}
 
 		// include query parameters in cache key for dynamic content
+		// 使用hash来避免文件系统特殊字符问题
 		if r.URL.RawQuery != "" {
-			key.MapName = key.MapName + "?" + r.URL.RawQuery
+			// 生成查询参数的MD5 hash
+			queryHash := fmt.Sprintf("%x", md5.Sum([]byte(r.URL.RawQuery)))
+			key.MapName = key.MapName + "_" + queryHash
+			log.Infof("DEBUG缓存中间件: 查询参数 '%s' 转换为hash: %s", r.URL.RawQuery, queryHash)
 		}
 
 		log.Infof("DEBUG缓存中间件: 缓存key: %s", key.String())
