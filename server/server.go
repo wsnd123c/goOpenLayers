@@ -10,6 +10,7 @@ import (
 	"github.com/go-spatial/tegola/server/myhttp"
 
 	"github.com/go-spatial/tegola/atlas"
+	"github.com/go-spatial/tegola/config"
 	"github.com/go-spatial/tegola/internal/build"
 	"github.com/go-spatial/tegola/internal/log"
 	"github.com/go-spatial/tegola/observability"
@@ -230,4 +231,9 @@ func setHeaders(w http.ResponseWriter) {
 
 		w.Header().Set(name, val)
 	}
+}
+
+// SetGlobalConfig 设置全局配置并传递给 myhttp 模块
+func SetGlobalConfig(conf *config.Config) {
+	myhttp.SetConfig(conf)
 }

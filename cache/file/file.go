@@ -10,6 +10,7 @@ import (
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/internal/log"
 )
 
 var (
@@ -99,7 +100,7 @@ func (fc *Cache) Get(ctx context.Context, key *cache.Key) ([]byte, bool, error) 
 
 func (fc *Cache) Set(ctx context.Context, key *cache.Key, val []byte) error {
 	var err error
-
+	log.Info("文件缓存执行")
 	// check for maxzoom
 	if key.Z > fc.MaxZoom {
 		return nil

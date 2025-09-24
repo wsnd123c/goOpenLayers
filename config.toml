@@ -3,12 +3,9 @@
 port = ":19091"
 
 [cache]
-type = "redis"
-# 无密码的 Redis 连接格式：redis://@主机:端口/数据库编号
-uri = "redis://@127.0.0.1:6380/8"
-max_age = "24h"  # 缓存24小时
-ttl = "43200"
-
+type="file"
+basepath = "D:/temp/tegola-cache"
+max_zoom="22"
 
 # PostGIS数据提供者配置
 [[providers]]

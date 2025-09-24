@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-spatial/tegola/config"
 	"github.com/go-spatial/tegola/internal/log"
 )
 
@@ -20,6 +21,13 @@ type PostHandle struct {
 	lastBroadcast   int
 	broadcastTicker *time.Ticker
 	taskID          string // 添加taskID字段
+}
+
+var conf *config.Config
+
+// SetConfig 设置全局配置
+func SetConfig(c *config.Config) {
+	conf = c // c 已经是指针，直接赋值
 }
 
 func initGinEngine() {
@@ -79,7 +87,12 @@ func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGr
 		handle.updateProgress()
 		return
 	}
-
+	if conf != nil {
+		log.Infof("conf:%v", *conf)
+		log.Infof("Cache config: %v", conf.Cache)
+	} else {
+		log.Infof("conf is nil")
+	}
 	handle.updateProgress()
 	log.Infof("成功请求瓦片 Z:%d X:%d Y:%d (已缓存到Redis) 进度: %d/%d",
 		z, x, y, handle.completed, handle.totalTiles)

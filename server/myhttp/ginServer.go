@@ -40,6 +40,7 @@ func (h *ginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // 初始化Socket.IO服务器
 func initSocketIOServer() {
 	// 配置Socket.IO服务器选项
+
 	opts := &engineio.Options{
 		Transports: []transport.Transport{
 			&polling.Transport{
