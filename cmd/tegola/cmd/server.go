@@ -104,6 +104,9 @@ var serverCmd = &cobra.Command{
 			log.Info("No app config source configured")
 		}
 
+		// 将配置传递给 myhttp 模块
+		server.SetGlobalConfig(&conf)
+
 		// start our webserver
 		srv := server.Start(nil, serverPort)
 		shutdown(srv)
