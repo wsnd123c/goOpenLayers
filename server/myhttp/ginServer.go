@@ -5,13 +5,9 @@ import (
 	"sync"
 
 	"github.com/dimfeld/httptreemux"
+	"github.com/doquangtan/socketio/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/go-spatial/tegola/internal/log"
-	socketio "github.com/googollee/go-socket.io"
-	"github.com/googollee/go-socket.io/engineio"
-	"github.com/googollee/go-socket.io/engineio/transport"
-	"github.com/googollee/go-socket.io/engineio/transport/polling"
-	"github.com/googollee/go-socket.io/engineio/transport/websocket"
 )
 
 type ginHandler struct {
@@ -21,8 +17,8 @@ type ginHandler struct {
 var ginRouter *gin.Engine
 var currentHandles = make(map[string]*PostHandle) // 支持多个任务并发
 var handleMutex sync.Mutex
-var socketServer *socketio.Server
-var socketClients = make(map[socketio.Conn]bool)
+var ioServer *socketio.Io
+var socketClients = make(map[*socketio.Socket]bool)
 var socketClientsMutex sync.Mutex
 
 // 初始化Gin并挂载到主路由
@@ -33,92 +29,108 @@ func InitGin(mainRouter *httptreemux.TreeMux) {
 	mountToMainRouter(mainRouter)
 	log.Info("Gin integration initialized")
 }
+
 func (h *ginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.engine.ServeHTTP(w, r)
 }
 
 // 初始化Socket.IO服务器
 func initSocketIOServer() {
-	// 配置Socket.IO服务器选项
-
-	opts := &engineio.Options{
-		Transports: []transport.Transport{
-			&polling.Transport{
-				CheckOrigin: func(r *http.Request) bool {
-					return true // 允许跨域
-				},
-			},
-			&websocket.Transport{
-				CheckOrigin: func(r *http.Request) bool {
-					return true // 允许跨域
-				},
-			},
-		},
-	}
-
-	socketServer = socketio.NewServer(opts)
+	// 创建新的Socket.IO v4服务器实例
+	ioServer = socketio.New()
 
 	// 监听连接事件
-	socketServer.OnConnect("/", func(s socketio.Conn) error {
-		log.Infof("新的Socket.IO客户端连接: %s", s.ID())
+	ioServer.OnConnection(func(socket *socketio.Socket) {
+		log.Infof("新的Socket.IO客户端连接: %s", socket.Id)
 
 		// 注册客户端
 		socketClientsMutex.Lock()
-		socketClients[s] = true
+		socketClients[socket] = true
 		clientCount := len(socketClients)
 		socketClientsMutex.Unlock()
 
 		log.Infof("当前连接的客户端数量: %d", clientCount)
 
-		return nil
+		// 监听断开连接事件
+		socket.On("disconnect", func(event *socketio.EventPayload) {
+			log.Infof("Socket.IO客户端断开连接: %s", socket.Id)
+
+			// 移除客户端
+			socketClientsMutex.Lock()
+			delete(socketClients, socket)
+			socketClientsMutex.Unlock()
+		})
+
+		// 监听加入房间事件
+		socket.On("join_task", func(event *socketio.EventPayload) {
+			if len(event.Data) == 0 {
+				log.Errorf("客户端 %s 加入房间失败：无数据", socket.Id)
+				return
+			}
+
+			data, ok := event.Data[0].(map[string]interface{})
+			if !ok {
+				log.Errorf("客户端 %s 加入房间失败：数据格式错误", socket.Id)
+				return
+			}
+
+			taskID, ok := data["task_id"].(string)
+			if !ok || taskID == "" {
+				log.Errorf("客户端 %s 加入房间失败：无效的task_id", socket.Id)
+				return
+			}
+
+			roomName := "task_" + taskID
+			socket.Join(roomName)
+			log.Infof("客户端 %s 加入房间: %s", socket.Id, roomName)
+
+			// 发送该任务的当前进度
+			sendTaskProgress(socket, taskID)
+		})
+
+		// 监听进度请求事件
+		socket.On("get_progress", func(event *socketio.EventPayload) {
+			if len(event.Data) == 0 {
+				log.Errorf("客户端 %s 请求进度失败：无数据", socket.Id)
+				return
+			}
+
+			data, ok := event.Data[0].(map[string]interface{})
+			if !ok {
+				log.Errorf("客户端 %s 请求进度失败：数据格式错误", socket.Id)
+				return
+			}
+
+			taskID, ok := data["task_id"].(string)
+			if !ok || taskID == "" {
+				log.Errorf("客户端 %s 请求进度失败：无效的task_id", socket.Id)
+				return
+			}
+
+			log.Infof("客户端 %s 请求任务 %s 的进度更新", socket.Id, taskID)
+			sendTaskProgress(socket, taskID)
+		})
 	})
 
-	// 监听断开连接事件
-	socketServer.OnDisconnect("/", func(s socketio.Conn, reason string) {
-		log.Infof("Socket.IO客户端断开连接: %s, 原因: %s", s.ID(), reason)
-
-		// 移除客户端
-		socketClientsMutex.Lock()
-		delete(socketClients, s)
-		socketClientsMutex.Unlock()
-	})
-
-	// 监听加入房间事件
-	socketServer.OnEvent("/", "join_task", func(s socketio.Conn, data map[string]interface{}) {
-		taskID, ok := data["task_id"].(string)
-		if !ok || taskID == "" {
-			log.Errorf("客户端 %s 加入房间失败：无效的task_id", s.ID())
-			return
-		}
-
-		roomName := "task_" + taskID
-		s.Join(roomName)
-		log.Infof("客户端 %s 加入房间: %s", s.ID(), roomName)
-
-		// 发送该任务的当前进度
-		sendTaskProgress(s, taskID)
-	})
-
-	// 监听进度请求事件
-	socketServer.OnEvent("/", "get_progress", func(s socketio.Conn, data map[string]interface{}) {
-		taskID, ok := data["task_id"].(string)
-		if !ok || taskID == "" {
-			log.Errorf("客户端 %s 请求进度失败：无效的task_id", s.ID())
-			return
-		}
-
-		log.Infof("客户端 %s 请求任务 %s 的进度更新", s.ID(), taskID)
-		sendTaskProgress(s, taskID)
-	})
-
-	go func() {
-		if err := socketServer.Serve(); err != nil {
-			log.Errorf("Socket.IO服务器启动失败: %v", err)
-		}
-	}()
+	// v4 版本不需要显式调用 Serve()
 }
 
 func registerGinRoutes() {
+	// 添加CORS中间件
+	ginRouter.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
 	ginRouter.POST("/sliceTiles", func(c *gin.Context) {
 		var req struct {
 			IsSlice bool      `json:"isSlice"`
@@ -175,8 +187,9 @@ func registerGinRoutes() {
 	})
 
 	// Socket.IO进度推送
-	ginRouter.GET("/socket.io/*any", gin.WrapH(socketServer))
-	ginRouter.POST("/socket.io/*any", gin.WrapH(socketServer))
+	ginRouter.GET("/socket.io/*any", gin.WrapH(ioServer.HttpHandler()))
+	ginRouter.POST("/socket.io/*any", gin.WrapH(ioServer.HttpHandler()))
+	ginRouter.OPTIONS("/socket.io/*any", gin.WrapH(ioServer.HttpHandler()))
 
 	v1 := ginRouter.Group("/v1")
 	{
@@ -190,7 +203,7 @@ func registerGinRoutes() {
 }
 
 // 发送特定任务的进度给单个客户端
-func sendTaskProgress(conn socketio.Conn, taskID string) {
+func sendTaskProgress(socket *socketio.Socket, taskID string) {
 	handleMutex.Lock()
 	handle, exists := currentHandles[taskID]
 	handleMutex.Unlock()
@@ -207,7 +220,7 @@ func sendTaskProgress(conn socketio.Conn, taskID string) {
 			"percentage": 0.0,
 			"isRunning":  false,
 		}
-		log.Infof("[sendTaskProgress] 任务 %s 不存在，发送默认进度给客户端 %s", taskID, conn.ID())
+		log.Infof("[sendTaskProgress] 任务 %s 不存在，发送默认进度给客户端 %s", taskID, socket.Id)
 
 	} else {
 		completed, total, percentage := handle.GetProgress()
@@ -223,11 +236,11 @@ func sendTaskProgress(conn socketio.Conn, taskID string) {
 			"isRunning":  isRunning,
 		}
 		log.Infof("[sendTaskProgress] 发送任务 %s 进度给客户端 %s: 已完成 %d / %d (%.2f%%) isRunning=%v",
-			taskID, conn.ID(), completed, total, percentage, isRunning)
+			taskID, socket.Id, completed, total, percentage, isRunning)
 	}
 
-	log.Infof("[sendTaskProgress] 准备发送消息给客户端 %s: %+v", conn.ID(), message)
-	conn.Emit("progress", message)
+	log.Infof("[sendTaskProgress] 准备发送消息给客户端 %s: %+v", socket.Id, message)
+	socket.Emit("progress", message)
 }
 
 // 向特定任务的房间广播进度更新
@@ -260,7 +273,7 @@ func BroadcastTaskProgress(taskID string) {
 		roomName, completed, total, percentage)
 
 	// 向房间广播消息
-	socketServer.BroadcastToRoom("/", roomName, "progress", message)
+	ioServer.To(roomName).Emit("progress", message)
 }
 
 // 兼容旧的广播函数（已废弃）
