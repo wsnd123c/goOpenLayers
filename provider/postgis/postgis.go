@@ -1268,14 +1268,29 @@ func (p Provider) generateSimplifiedTile(
 		extent, _ := tile.BufferedExtent()
 		bbox := fmt.Sprintf("ST_MakeEnvelope(%.8f,%.8f,%.8f,%.8f,%d)",
 			extent.MinX(), extent.MinY(), extent.MaxX(), extent.MaxY(), 3857)
-		simplifyTolerance := math.Pow(2, float64(uint(20-z))) * 0.5
+		//simplifyTolerance := math.Pow(2, float64(uint(20-z))) * 0.5
+		//simplifyTolerance := math.Pow(1.5, float64(18-z)) * 0.3
+		simplifyTolerance := func(z int) float64 {
+			// 基础容差根据缩放级别动态调整
+			baseTolerance := math.Pow(1.3, float64(16-z)) * 0.2
+
+			// 确保容差不会太小或太大
+			if baseTolerance < 0.1 {
+				return 0.1 // 最小容差保证
+			}
+			if baseTolerance > 100 {
+				return 100 // 最大容差限制
+			}
+			return baseTolerance
+		}(int(z))
 		simplifiedSQL := fmt.Sprintf(`
-			SELECT 
+			SELECT
 				id,
 				ST_AsMVTGeom(ST_Simplify(%s, %.2f), ST_TileEnvelope(%d, %d, %d), 4096, 256, true) AS %s
 			FROM %s t
 			WHERE t.%s && %s
-			ORDER BY ST_Area(t.%s) DESC`,
+			ORDER BY ST_Area(t.%s) DESC
+			    LIMIT 1500`,
 			l.GeomFieldName(),      // geometry field for ST_Simplify
 			simplifyTolerance,      // 使用动态计算的容差
 			int(z), int(x), int(y), // for ST_TileEnvelope
@@ -1283,7 +1298,30 @@ func (p Provider) generateSimplifiedTile(
 			replacedMVTName,         // table name
 			l.GeomFieldName(), bbox, // WHERE clause
 			l.GeomFieldName()) // for ORDER BY
-
+		//%%%%%%%%%%%%%%%%%%%%%%%%
+		//simplifiedSQL := fmt.Sprintf(`
+		//SELECT
+		//   id,
+		//   ST_AsMVTGeom(
+		//       ST_SimplifyPreserveTopology(%s, %.2f),  -- 使用保留拓扑的简化
+		//       ST_TileEnvelope(%d, %d, %d),
+		//       4096,
+		//       128,  -- 减小缓冲区大小
+		//       true
+		//   ) AS %s
+		//FROM %s t
+		//WHERE t.%s && %s
+		//AND ST_Area(t.%s) > 10  -- 过滤掉太小的几何图形
+		//ORDER BY ST_Area(t.%s) DESC
+		//LIMIT 1500`,
+		//	l.GeomFieldName(),
+		//	simplifyTolerance,
+		//	int(z), int(x), int(y),
+		//	l.GeomFieldName(),
+		//	replacedMVTName,
+		//	l.GeomFieldName(), bbox,
+		//	l.GeomFieldName(),
+		//	l.GeomFieldName())
 		var featureIDName string
 		if l.IDFieldName() == "" {
 			featureIDName = "NULL"
