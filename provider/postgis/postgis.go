@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -1157,10 +1158,13 @@ func (p Provider) MVTForLayers(
 			sql,
 		))
 	}
-
+	log.Infof("这是我的sql: %v", sqls)
 	subsqls := strings.Join(sqls, "||")
 
 	fsql := fmt.Sprintf(`SELECT (%s) AS data`, subsqls)
+
+	// 记录最终执行的SQL
+	log.Infof(" 最终执行SQL: %s", fsql)
 
 	var data []byte
 
@@ -1170,14 +1174,48 @@ func (p Provider) MVTForLayers(
 	{
 		now := time.Now()
 		err = p.pool.QueryRow(ctx, fsql, args...).Scan(&data)
+
+		// 记录查询执行时间和结果
+		queryTime := time.Since(now)
+		log.Infof("🔍 SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
+			float64(queryTime.Nanoseconds())/1000000, len(data))
+
 		if p.mvtProviderQueryHistogramSeconds != nil {
 			z, _, _ := tile.ZXY()
 			lbls := prometheus.Labels{
 				"z":        strconv.FormatUint(uint64(z), 10),
 				"map_name": mapName,
 			}
-			p.mvtProviderQueryHistogramSeconds.With(lbls).Observe(time.Since(now).Seconds())
+			p.mvtProviderQueryHistogramSeconds.With(lbls).Observe(queryTime.Seconds())
 		}
+	}
+
+	// 强制记录瓦片大小信息
+	z, x, y := tile.ZXY()
+	tileSizeKB := float64(len(data)) / 1024.0
+	log.Infof("瓦片大小 - Z:%d X:%d Y:%d, 原始数据: %d bytes (%.2f KB)",
+		z, x, y, len(data), tileSizeKB)
+
+	// 如果数据为空，记录详细信息用于调试
+	if len(data) == 0 {
+		log.Warnf("  瓦片数据为空! Z:%d X:%d Y:%d - 可能原因: 1)该区域无数据 2)SQL查询条件过滤了所有数据 3)几何不在瓦片范围内", z, x, y)
+		return data, nil
+	}
+
+	if tileSizeKB > 200.0 {
+
+		// 重新生成优化的SQL
+		optimizedData, err := p.generateSimplifiedTile(ctx, tile, params, layers, mapName, args)
+		if err != nil {
+			log.Errorf("优化瓦片失败: %v", err)
+			return data, nil // 返回原始数据
+		}
+
+		optimizedSizeKB := float64(len(optimizedData)) / 1024.0
+		log.Infof(" 线条简化完成 - 原始: %.2f KB → 优化后: %.2f KB (减少 %.1f%%)",
+			tileSizeKB, optimizedSizeKB, (tileSizeKB-optimizedSizeKB)/tileSizeKB*100)
+
+		return optimizedData, nil
 	}
 
 	if debugExecuteSQL {
@@ -1191,6 +1229,91 @@ func (p Provider) MVTForLayers(
 	}
 
 	// data may have garbage in it.
+	if err := ctxErr(ctx, err); err != nil {
+		return []byte{}, err
+	}
+
+	return data, nil
+}
+
+// 生成简化的瓦片数据 (只简化复杂线条)
+func (p Provider) generateSimplifiedTile(
+	ctx context.Context,
+	tile provider.Tile,
+	params provider.Params,
+	layers []provider.Layer,
+	mapName string,
+	args []any,
+) ([]byte, error) {
+	var (
+		err  error
+		sqls = make([]string, 0, len(layers))
+	)
+
+	z, x, y := tile.ZXY()
+
+	for i := range layers {
+		l, ok := p.Layer(layers[i].Name)
+		if !ok {
+			log.Warnf("provider layer not found %v", layers[i].Name)
+			continue
+		}
+
+		// 构建简化的SQL
+		rawMVTName := layers[i].MVTName
+		var mvtNameArgs []any
+		replacedMVTName := params.ReplaceParams(rawMVTName, &mvtNameArgs)
+
+		// 获取瓦片边界
+		extent, _ := tile.BufferedExtent()
+		bbox := fmt.Sprintf("ST_MakeEnvelope(%.8f,%.8f,%.8f,%.8f,%d)",
+			extent.MinX(), extent.MinY(), extent.MaxX(), extent.MaxY(), 3857)
+		simplifyTolerance := math.Pow(2, float64(uint(20-z))) * 0.5
+		simplifiedSQL := fmt.Sprintf(`
+			SELECT 
+				id,
+				ST_AsMVTGeom(ST_Simplify(%s, %.2f), ST_TileEnvelope(%d, %d, %d), 4096, 256, true) AS %s
+			FROM %s t
+			WHERE t.%s && %s
+			ORDER BY ST_Area(t.%s) DESC`,
+			l.GeomFieldName(),      // geometry field for ST_Simplify
+			simplifyTolerance,      // 使用动态计算的容差
+			int(z), int(x), int(y), // for ST_TileEnvelope
+			l.GeomFieldName(),       // geometry field name
+			replacedMVTName,         // table name
+			l.GeomFieldName(), bbox, // WHERE clause
+			l.GeomFieldName()) // for ORDER BY
+
+		var featureIDName string
+		if l.IDFieldName() == "" {
+			featureIDName = "NULL"
+		} else {
+			featureIDName = fmt.Sprintf(`'%s'`, l.IDFieldName())
+		}
+
+		sqls = append(sqls, fmt.Sprintf(
+			`(SELECT ST_AsMVT(q,'%s',%d,'%s',%s) AS data FROM (%s) AS q)`,
+			replacedMVTName,
+			tegola.DefaultExtent,
+			l.GeomFieldName(),
+			featureIDName,
+			simplifiedSQL,
+		))
+	}
+
+	subsqls := strings.Join(sqls, "||")
+	fsql := fmt.Sprintf(`SELECT (%s) AS data`, subsqls)
+
+	log.Infof("执行简化SQL: %s", fsql)
+
+	var data []byte
+	now := time.Now()
+	err = p.pool.QueryRow(ctx, fsql, args...).Scan(&data)
+
+	queryTime := time.Since(now)
+	log.Infof("简化SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
+		float64(queryTime.Nanoseconds())/1000000, len(data))
+
 	if err := ctxErr(ctx, err); err != nil {
 		return []byte{}, err
 	}

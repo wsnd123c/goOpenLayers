@@ -64,7 +64,7 @@ func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGr
 		Timeout: 30 * time.Second, // 增加超时时间到30秒，避免数据库查询超时
 	}
 
-	url := fmt.Sprintf("http://127.0.0.1:19089/maps/inference_database/%d/%d/%d.pbf?task_id=%s",
+	url := fmt.Sprintf("http://127.0.0.1:19091/maps/inference_database/%d/%d/%d.pbf?task_id=%s",
 		z, x, y, taskID)
 	resp, err := client.Get(url)
 	if err != nil {
