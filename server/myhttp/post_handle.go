@@ -93,8 +93,8 @@ func requestTile(z, x, y int, taskID string, handle *PostHandle, wg *sync.WaitGr
 		log.Infof("conf is nil")
 	}
 	handle.updateProgress()
-	log.Infof("成功请求瓦片 Z:%d X:%d Y:%d (已缓存到Redis) 进度: %d/%d",
-		z, x, y, handle.completed, handle.totalTiles)
+	//log.Infof("成功请求瓦片 Z:%d X:%d Y:%d (已缓存到Redis) 进度: %d/%d",
+	//	z, x, y, handle.completed, handle.totalTiles)
 }
 
 // 更新进度
@@ -145,10 +145,10 @@ func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 		xMax, yMin := lngLatToTile(h.bounds[2], h.bounds[3], zoom)
 		tileCount := (xMax - xMin + 1) * (yMax - yMin + 1)
 		h.totalTiles += tileCount
-		log.Infof("Zoom=%d: xMin=%d, yMin=%d, xMax=%d, yMax=%d, 瓦片数: %d", zoom, xMin, yMin, xMax, yMax, tileCount)
+		//log.Infof("Zoom=%d: xMin=%d, yMin=%d, xMax=%d, yMax=%d, 瓦片数: %d", zoom, xMin, yMin, xMax, yMax, tileCount)
 	}
 
-	log.Infof("总瓦片数: %d", h.totalTiles)
+	//log.Infof("总瓦片数: %d", h.totalTiles)
 	h.completed = 0
 	h.lastBroadcast = 0
 
@@ -159,7 +159,7 @@ func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 	}()
 
 	// 开始请求瓦片
-	log.Infof("开始处理 %d 个缩放级别的瓦片", len(zooms))
+	//log.Infof("开始处理 %d 个缩放级别的瓦片", len(zooms))
 	for _, zoom := range zooms {
 		xMin, yMax := lngLatToTile(h.bounds[0], h.bounds[1], zoom)
 		xMax, yMin := lngLatToTile(h.bounds[2], h.bounds[3], zoom)
@@ -172,9 +172,9 @@ func (h *PostHandle) FetchTiles(taskID string, zooms []int) {
 		}
 	}
 
-	log.Infof("等待所有 %d 个瓦片请求完成...", h.totalTiles)
+	//log.Infof("等待所有 %d 个瓦片请求完成...", h.totalTiles)
 	wg.Wait()
-	log.Infof("所有任务完成，总共处理 %d 个瓦片", h.totalTiles)
+	//log.Infof("所有任务完成，总共处理 %d 个瓦片", h.totalTiles)
 
 	// 发送最终进度广播
 	BroadcastTaskProgress(h.taskID)

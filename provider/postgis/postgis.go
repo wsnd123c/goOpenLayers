@@ -915,8 +915,6 @@ func (p Provider) TileFeatures(
 	params provider.Params,
 	fn func(f *provider.Feature) error,
 ) error {
-	log.Infof("666666666666")
-	log.Infof("Params: %#v", params)
 	var mapName string
 	{
 		mapNameVal := ctx.Value(observability.ObserveVarMapName)
@@ -1083,16 +1081,6 @@ func (p Provider) MVTForLayers(
 	params provider.Params,
 	layers []provider.Layer,
 ) ([]byte, error) {
-
-	if params == nil {
-	} else {
-		if v, ok := params["!TASKID!"]; ok {
-			log.Infof("=%v", v)
-		} else {
-			log.Warn(" not found in params")
-		}
-	}
-
 	var (
 		err     error
 		sqls    = make([]string, 0, len(layers))
@@ -1110,6 +1098,10 @@ func (p Provider) MVTForLayers(
 
 	args := make([]any, 0)
 
+	// 获取缩放层级，决定是否使用简化
+	z, x, y := tile.ZXY()
+	useSimplification := z <= 16
+
 	for i := range layers {
 		if debug {
 			log.Debugf("looking for layer: %v", layers[i])
@@ -1119,29 +1111,75 @@ func (p Provider) MVTForLayers(
 			// Should we error here, or have a flag so that we don't
 			// spam the user?
 			log.Warnf("provider layer not found %v", layers[i].Name)
+			continue
 		}
-		if debugLayerSQL {
-			log.Debugf("SQL for Layer(%v):\n%v\nargs:%v\n", l.Name(), l.sql, args)
-		}
-		sql, err := replaceTokens(l.sql, &l, tile, false)
-		if err := ctxErr(ctx, err); err != nil {
-			return nil, err
-		}
-		//新的
+
 		rawMVTName := layers[i].MVTName
-		//var mvtNameArgs []any
 		replacedMVTName := params.ReplaceMvtTableName(rawMVTName)
-		// replace configured query parameters if any
-		sql = params.ReplaceParams(sql, &args)
-		//这个把他动态列处理了，出来极速正儿八经的sql了
-		sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, l.GeomFieldName(), sql, &args, replacedMVTName)
-		if err != nil {
-			return nil, fmt.Errorf("error replacing dynamic columns for layer %v: %w", l.Name(), err)
+
+		var sql string
+
+		if useSimplification {
+			// 使用简化的SQL
+			extent, _ := tile.BufferedExtent()
+			bbox := fmt.Sprintf("ST_MakeEnvelope(%.8f,%.8f,%.8f,%.8f,%d)",
+				extent.MinX(), extent.MinY(), extent.MaxX(), extent.MaxY(), 3857)
+
+			simplifyTolerance := func(z int) float64 {
+				baseTolerance := math.Pow(2.0, float64(16-z)) * 1.0
+				if baseTolerance < 0.5 {
+					return 0.5
+				}
+				if baseTolerance > 500 {
+					return 500
+				}
+				return baseTolerance
+			}(int(z))
+
+			sql = fmt.Sprintf(`
+				WITH tile_extent AS (
+					SELECT ST_TileEnvelope(%d, %d, %d) AS envelope
+				)
+				SELECT
+					id,
+					ST_AsMVTGeom(
+						ST_Simplify(%s, %.2f),
+						te.envelope,
+						4096,
+						256,
+						true
+					) AS %s
+				FROM %s t, tile_extent te
+				WHERE t.%s && %s
+				ORDER BY ST_Area(t.%s) DESC
+				LIMIT 1500`,
+				int(z), int(x), int(y),
+				l.GeomFieldName(),
+				simplifyTolerance,
+				l.GeomFieldName(),
+				replacedMVTName,
+				l.GeomFieldName(),
+				bbox,
+				l.GeomFieldName())
+		} else {
+			// 使用原始SQL
+			if debugLayerSQL {
+				log.Debugf("SQL for Layer(%v):\n%v\nargs:%v\n", l.Name(), l.sql, args)
+			}
+			sql, err = replaceTokens(l.sql, &l, tile, false)
+			if err := ctxErr(ctx, err); err != nil {
+				return nil, err
+			}
+			// replace configured query parameters if any
+			sql = params.ReplaceParams(sql, &args)
+			//这个把他动态列处理了，出来极速正儿八经的sql了
+			sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, l.GeomFieldName(), sql, &args, replacedMVTName)
+			if err != nil {
+				return nil, fmt.Errorf("error replacing dynamic columns for layer %v: %w", l.Name(), err)
+			}
 		}
-		// bytea ST_AsMVT(any_element row, text name, integer extent, text geom_name, text feature_id_name)
 
 		var featureIDName string
-
 		if l.IDFieldName() == "" {
 			featureIDName = "NULL"
 		} else {
@@ -1157,13 +1195,9 @@ func (p Provider) MVTForLayers(
 			sql,
 		))
 	}
-	log.Infof("这是我的sql: %v", sqls)
 	subsqls := strings.Join(sqls, "||")
 
 	fsql := fmt.Sprintf(`SELECT (%s) AS data`, subsqls)
-
-	// 记录最终执行的SQL
-	log.Infof(" 最终执行SQL: %s", fsql)
 
 	var data []byte
 
@@ -1174,10 +1208,7 @@ func (p Provider) MVTForLayers(
 		now := time.Now()
 		err = p.pool.QueryRow(ctx, fsql, args...).Scan(&data)
 
-		// 记录查询执行时间和结果
 		queryTime := time.Since(now)
-		log.Infof("🔍 SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
-			float64(queryTime.Nanoseconds())/1000000, len(data))
 
 		if p.mvtProviderQueryHistogramSeconds != nil {
 			z, _, _ := tile.ZXY()
@@ -1189,32 +1220,22 @@ func (p Provider) MVTForLayers(
 		}
 	}
 
-	// 强制记录瓦片大小信息
-	z, x, y := tile.ZXY()
-	tileSizeKB := float64(len(data)) / 1024.0
-	log.Infof("瓦片大小 - Z:%d X:%d Y:%d, 原始数据: %d bytes (%.2f KB)",
-		z, x, y, len(data), tileSizeKB)
+	// 记录瓦片大小信息 (仅在调试模式)
+	if debugExecuteSQL {
+		tileSizeKB := float64(len(data)) / 1024.0
+		log.Debugf("瓦片大小 - Z:%d X:%d Y:%d, 数据: %d bytes (%.2f KB) %s",
+			z, x, y, len(data), tileSizeKB, func() string {
+				if useSimplification {
+					return "[已简化]"
+				}
+				return "[原始]"
+			}())
+	}
 
 	// 如果数据为空，记录详细信息用于调试
 	if len(data) == 0 {
 		log.Warnf("  瓦片数据为空! Z:%d X:%d Y:%d - 可能原因: 1)该区域无数据 2)SQL查询条件过滤了所有数据 3)几何不在瓦片范围内", z, x, y)
 		return data, nil
-	}
-
-	if z <= 16 {
-
-		// 重新生成优化的SQL
-		optimizedData, err := p.generateSimplifiedTile(ctx, tile, params, layers, mapName, args)
-		if err != nil {
-			log.Errorf("优化瓦片失败: %v", err)
-			return data, nil // 返回原始数据
-		}
-
-		optimizedSizeKB := float64(len(optimizedData)) / 1024.0
-		log.Infof(" 线条简化完成 - 原始: %.2f KB → 优化后: %.2f KB (减少 %.1f%%)",
-			tileSizeKB, optimizedSizeKB, (tileSizeKB-optimizedSizeKB)/tileSizeKB*100)
-
-		return optimizedData, nil
 	}
 
 	if debugExecuteSQL {
@@ -1228,140 +1249,6 @@ func (p Provider) MVTForLayers(
 	}
 
 	// data may have garbage in it.
-	if err := ctxErr(ctx, err); err != nil {
-		return []byte{}, err
-	}
-
-	return data, nil
-}
-
-// 生成简化的瓦片数据 (只简化复杂线条)
-func (p Provider) generateSimplifiedTile(
-	ctx context.Context,
-	tile provider.Tile,
-	params provider.Params,
-	layers []provider.Layer,
-	mapName string,
-	args []any,
-) ([]byte, error) {
-	var (
-		err  error
-		sqls = make([]string, 0, len(layers))
-	)
-
-	z, x, y := tile.ZXY()
-
-	for i := range layers {
-		l, ok := p.Layer(layers[i].Name)
-		if !ok {
-			log.Warnf("provider layer not found %v", layers[i].Name)
-			continue
-		}
-
-		// 构建简化的SQL
-		rawMVTName := layers[i].MVTName
-		var mvtNameArgs []any
-		replacedMVTName := params.ReplaceParams(rawMVTName, &mvtNameArgs)
-
-		// 获取瓦片边界
-		extent, _ := tile.BufferedExtent()
-		bbox := fmt.Sprintf("ST_MakeEnvelope(%.8f,%.8f,%.8f,%.8f,%d)",
-			extent.MinX(), extent.MinY(), extent.MaxX(), extent.MaxY(), 3857)
-		//simplifyTolerance := math.Pow(2, float64(uint(20-z))) * 0.5
-		//simplifyTolerance := math.Pow(1.5, float64(18-z)) * 0.3
-		simplifyTolerance := func(z int) float64 {
-			baseTolerance := math.Pow(2.0, float64(16-z)) * 1.0
-
-			if baseTolerance < 0.5 {
-				return 0.5
-			}
-			if baseTolerance > 500 {
-				return 500
-			}
-			return baseTolerance
-		}(int(z))
-
-		simplifiedSQL := fmt.Sprintf(`
-    WITH tile_extent AS (
-        SELECT ST_TileEnvelope(%d, %d, %d) AS envelope
-    )
-    SELECT
-        id,
-        ST_AsMVTGeom(
-            ST_Simplify(%s, %.2f),
-            te.envelope,
-            4096,
-            256,
-            true
-        ) AS %s
-    FROM %s t, tile_extent te
-    WHERE t.%s && %s
-    ORDER BY ST_Area(t.%s) DESC
-    LIMIT 1500
-`,
-			int(z), int(x), int(y),
-			l.GeomFieldName(),
-			simplifyTolerance,
-			l.GeomFieldName(),
-			replacedMVTName,
-			l.GeomFieldName(),
-			bbox,
-			l.GeomFieldName())
-
-		//%%%%%%%%%%%%%%%%%%%%%%%%
-		//simplifiedSQL := fmt.Sprintf(`
-		//SELECT
-		//   id,
-		//   ST_AsMVTGeom(
-		//       ST_SimplifyPreserveTopology(%s, %.2f),  -- 使用保留拓扑的简化
-		//       ST_TileEnvelope(%d, %d, %d),
-		//       4096,
-		//       128,  -- 减小缓冲区大小
-		//       true
-		//   ) AS %s
-		//FROM %s t
-		//WHERE t.%s && %s
-		//AND ST_Area(t.%s) > 10  -- 过滤掉太小的几何图形
-		//ORDER BY ST_Area(t.%s) DESC
-		//LIMIT 1500`,
-		//	l.GeomFieldName(),
-		//	simplifyTolerance,
-		//	int(z), int(x), int(y),
-		//	l.GeomFieldName(),
-		//	replacedMVTName,
-		//	l.GeomFieldName(), bbox,
-		//	l.GeomFieldName(),
-		//	l.GeomFieldName())
-		var featureIDName string
-		if l.IDFieldName() == "" {
-			featureIDName = "NULL"
-		} else {
-			featureIDName = fmt.Sprintf(`'%s'`, l.IDFieldName())
-		}
-
-		sqls = append(sqls, fmt.Sprintf(
-			`(SELECT ST_AsMVT(q,'%s',%d,'%s',%s) AS data FROM (%s) AS q)`,
-			replacedMVTName,
-			tegola.DefaultExtent,
-			l.GeomFieldName(),
-			featureIDName,
-			simplifiedSQL,
-		))
-	}
-
-	subsqls := strings.Join(sqls, "||")
-	fsql := fmt.Sprintf(`SELECT (%s) AS data`, subsqls)
-
-	log.Infof("执行简化SQL: %s", fsql)
-
-	var data []byte
-	now := time.Now()
-	err = p.pool.QueryRow(ctx, fsql, args...).Scan(&data)
-
-	queryTime := time.Since(now)
-	log.Infof("简化SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
-		float64(queryTime.Nanoseconds())/1000000, len(data))
-
 	if err := ctxErr(ctx, err); err != nil {
 		return []byte{}, err
 	}

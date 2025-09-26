@@ -77,8 +77,6 @@ func (fc *Cache) Get(ctx context.Context, key *cache.Key) ([]byte, bool, error) 
 	path := filepath.Join(fc.Basepath, key.String())
 
 	// 添加调试信息：打印要查找的缓存路径
-	log.Infof("🔍 尝试获取缓存: path=%s, key=%+v", path, key)
-	log.Infof("🔍 缓存键详情: Z=%d, X=%d, Y=%d", key.Z, key.X, key.Y)
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -97,7 +95,7 @@ func (fc *Cache) Get(ctx context.Context, key *cache.Key) ([]byte, bool, error) 
 		return nil, false, err
 	}
 
-	log.Infof("✅ 文件缓存命中: path=%s", path)
+	//log.Infof("✅ 文件缓存命中: path=%s", path)
 
 	val, err := io.ReadAll(f)
 	if err != nil {
@@ -105,7 +103,7 @@ func (fc *Cache) Get(ctx context.Context, key *cache.Key) ([]byte, bool, error) 
 		return nil, false, err
 	}
 
-	log.Infof("✅ 成功读取缓存: path=%s, 文件大小=%d bytes", path, len(val))
+	//log.Infof("✅ 成功读取缓存: path=%s, 文件大小=%d bytes", path, len(val))
 	return val, true, nil
 }
 
