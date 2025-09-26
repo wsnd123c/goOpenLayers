@@ -28,6 +28,31 @@ type QueryParameterValue struct {
 
 type Params map[string]QueryParameterValue
 
+// 处理 !TASKID! 的公共函数
+func (params Params) replaceTaskID(name string) string {
+	if params == nil {
+		return name
+	}
+
+	if v, ok := params["!TASKID!"]; ok {
+		tableName := fmt.Sprintf("%v", v.Value)
+
+		// 安全校验（只允许字母、数字、下划线）
+		validName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+		if !validName.MatchString(tableName) {
+			log.Errorf("invalid table name: %s", tableName)
+			return name
+		}
+
+		// 替换 !TASKID! 为 tableName
+		name = strings.ReplaceAll(name, "!TASKID!", tableName)
+	} else {
+		log.Warn("param not found in request")
+	}
+
+	return name
+}
+
 // ReplaceParams substitutes configured query parameter tokens for their values
 // within the provided SQL string
 func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
@@ -40,28 +65,8 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 		cache = make(map[string]string)
 		sb    strings.Builder
 	)
-
+	sql = params.replaceTaskID(sql) // 使用公共函数处理 !TASKID!
 	for _, token := range ParameterTokenRegexp.FindAllString(sql, -1) {
-
-		// ---- 1. 特殊处理  ----
-		if token == "!TASKID!" {
-			if v, ok := params["!TASKID!"]; ok {
-				tableName := fmt.Sprintf("%v", v.Value)
-
-				// 安全校验（只允许字母、数字、下划线）
-				validName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-				if !validName.MatchString(tableName) {
-					log.Errorf("invalid table name: %s", tableName)
-					continue
-				}
-
-				//log.Infof("Replacing token %s with table: %s", token, tableName)
-				sql = strings.ReplaceAll(sql, token, tableName)
-			} else {
-				log.Warn(" param not found in request")
-			}
-			continue
-		}
 
 		// ---- 2. 默认参数替换逻辑 ----
 		resultSQL, ok := cache[token]
@@ -102,6 +107,11 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 	//log.Infof("Final SQL after ReplaceParams:\n%s", sql)
 	return sql
 }
+
+// 自个造的一个处理动态传过来mvt的方法
+func (params Params) ReplaceMvtTableName(name string) string {
+	return params.replaceTaskID(name) // 使用公共函数处理 !TASKID!
+}
 func getColumnsFromDB(ctx context.Context, pool *pgxpool.Pool, tableName, geomField string) (string, error) {
 	query := `
 		SELECT column_name
@@ -140,6 +150,7 @@ func (params Params) ReplaceParamsWithColumns(
 	geomField string,
 	sql string,
 	args *[]interface{},
+	mvtTableName string,
 ) (string, error) {
 	if params == nil {
 		log.Warn("ReplaceParamsWithColumns called with nil params")
@@ -153,33 +164,13 @@ func (params Params) ReplaceParamsWithColumns(
 
 	for _, token := range ParameterTokenRegexp.FindAllString(sql, -1) {
 
-		// ---- 1. 特殊处理 !TASKID! ----
-		if token == "!TASKID!" {
-			if v, ok := params["!TASKID!"]; ok {
-				tableName := fmt.Sprintf("%v", v.Value)
-
-				// 安全校验（只允许字母、数字、下划线）
-				validName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-				if !validName.MatchString(tableName) {
-					log.Errorf("invalid table name: %s", tableName)
-					continue
-				}
-
-				log.Infof("Replacing token %s with table: %s", token, tableName)
-				sql = strings.ReplaceAll(sql, token, tableName)
-			} else {
-				log.Warn(" param not found in request")
-			}
-			continue
-		}
-
 		//处理 !COLUMNS!
 		if token == "!COLUMNS!" {
-			if v, ok := params["!TASKID!"]; ok {
-				tableName := fmt.Sprintf("%v", v.Value)
-				colList, err := getColumnsFromDB(ctx, pool, tableName, geomField)
+			if _, ok := params["!TASKID!"]; ok {
+
+				colList, err := getColumnsFromDB(ctx, pool, mvtTableName, geomField)
 				if err != nil {
-					return "", fmt.Errorf("failed to get columns for table %s: %w", tableName, err)
+					return "", fmt.Errorf("failed to get columns for table %s: %w", mvtTableName, err)
 				}
 				//log.Infof("Replacing token %s with columns: %s", token, colList)
 				sql = strings.ReplaceAll(sql, token, colList)
@@ -198,7 +189,7 @@ func (params Params) ReplaceParamsWithColumns(
 
 		param, ok := params[token]
 		if !ok {
-			// 未识别的 token，跳过
+
 			continue
 		}
 
@@ -224,7 +215,7 @@ func (params Params) ReplaceParamsWithColumns(
 		cache[token] = resultSQL
 		sql = strings.ReplaceAll(sql, token, resultSQL)
 	}
-	//打印sql
+
 	//log.Infof("Final SQL after ReplaceParamsWithColumns:\n%s", sql)
 	return sql, nil
 }

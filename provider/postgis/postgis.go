@@ -1083,8 +1083,6 @@ func (p Provider) MVTForLayers(
 	params provider.Params,
 	layers []provider.Layer,
 ) ([]byte, error) {
-	log.Infof("params raw: %#v", params)
-	fmt.Println("tile:", tile, "params:", params, "layers:", layers, "ctx", ctx)
 
 	if params == nil {
 	} else {
@@ -1131,11 +1129,12 @@ func (p Provider) MVTForLayers(
 		}
 		//新的
 		rawMVTName := layers[i].MVTName
-		var mvtNameArgs []any
-		replacedMVTName := params.ReplaceParams(rawMVTName, &mvtNameArgs)
+		//var mvtNameArgs []any
+		replacedMVTName := params.ReplaceMvtTableName(rawMVTName)
 		// replace configured query parameters if any
 		sql = params.ReplaceParams(sql, &args)
-		sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, l.GeomFieldName(), sql, &args)
+		//这个把他动态列处理了，出来极速正儿八经的sql了
+		sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, l.GeomFieldName(), sql, &args, replacedMVTName)
 		if err != nil {
 			return nil, fmt.Errorf("error replacing dynamic columns for layer %v: %w", l.Name(), err)
 		}
@@ -1202,7 +1201,7 @@ func (p Provider) MVTForLayers(
 		return data, nil
 	}
 
-	if tileSizeKB > 200.0 {
+	if z <= 16 {
 
 		// 重新生成优化的SQL
 		optimizedData, err := p.generateSimplifiedTile(ctx, tile, params, layers, mapName, args)
@@ -1271,33 +1270,44 @@ func (p Provider) generateSimplifiedTile(
 		//simplifyTolerance := math.Pow(2, float64(uint(20-z))) * 0.5
 		//simplifyTolerance := math.Pow(1.5, float64(18-z)) * 0.3
 		simplifyTolerance := func(z int) float64 {
-			// 基础容差根据缩放级别动态调整
-			baseTolerance := math.Pow(1.3, float64(16-z)) * 0.2
+			baseTolerance := math.Pow(2.0, float64(16-z)) * 1.0
 
-			// 确保容差不会太小或太大
-			if baseTolerance < 0.1 {
-				return 0.1 // 最小容差保证
+			if baseTolerance < 0.5 {
+				return 0.5
 			}
-			if baseTolerance > 100 {
-				return 100 // 最大容差限制
+			if baseTolerance > 500 {
+				return 500
 			}
 			return baseTolerance
 		}(int(z))
+
 		simplifiedSQL := fmt.Sprintf(`
-			SELECT
-				id,
-				ST_AsMVTGeom(ST_Simplify(%s, %.2f), ST_TileEnvelope(%d, %d, %d), 4096, 256, true) AS %s
-			FROM %s t
-			WHERE t.%s && %s
-			ORDER BY ST_Area(t.%s) DESC
-			    LIMIT 1500`,
-			l.GeomFieldName(),      // geometry field for ST_Simplify
-			simplifyTolerance,      // 使用动态计算的容差
-			int(z), int(x), int(y), // for ST_TileEnvelope
-			l.GeomFieldName(),       // geometry field name
-			replacedMVTName,         // table name
-			l.GeomFieldName(), bbox, // WHERE clause
-			l.GeomFieldName()) // for ORDER BY
+    WITH tile_extent AS (
+        SELECT ST_TileEnvelope(%d, %d, %d) AS envelope
+    )
+    SELECT
+        id,
+        ST_AsMVTGeom(
+            ST_Simplify(%s, %.2f),
+            te.envelope,
+            4096,
+            256,
+            true
+        ) AS %s
+    FROM %s t, tile_extent te
+    WHERE t.%s && %s
+    ORDER BY ST_Area(t.%s) DESC
+    LIMIT 1500
+`,
+			int(z), int(x), int(y),
+			l.GeomFieldName(),
+			simplifyTolerance,
+			l.GeomFieldName(),
+			replacedMVTName,
+			l.GeomFieldName(),
+			bbox,
+			l.GeomFieldName())
+
 		//%%%%%%%%%%%%%%%%%%%%%%%%
 		//simplifiedSQL := fmt.Sprintf(`
 		//SELECT
