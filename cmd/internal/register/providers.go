@@ -80,7 +80,7 @@ func Providers(providers []dict.Dicter, maps []provider.Map, task_id []dict.Dict
 		// add the provider to our map of registered providers
 		registeredProviders[pname] = prov
 		log.Infof("registering provider(type): %v (%v)", pname, ptype)
-		log.Infof("这是我的task_id: %+v", task_id)
+		//log.Infof("这是我的task_id: %+v", task_id)
 
 	}
 

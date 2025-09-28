@@ -112,7 +112,7 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 func (params Params) ReplaceMvtTableName(name string) string {
 	return params.replaceTaskID(name) // 使用公共函数处理 !TASKID!
 }
-func getColumnsFromDB(ctx context.Context, pool *pgxpool.Pool, tableName, geomField string) (string, error) {
+func GetColumnsFromDB(ctx context.Context, pool *pgxpool.Pool, tableName, geomField string) (string, error) {
 	query := `
 		SELECT column_name
 		FROM information_schema.columns
@@ -168,7 +168,7 @@ func (params Params) ReplaceParamsWithColumns(
 		if token == "!COLUMNS!" {
 			if _, ok := params["!TASKID!"]; ok {
 
-				colList, err := getColumnsFromDB(ctx, pool, mvtTableName, geomField)
+				colList, err := GetColumnsFromDB(ctx, pool, mvtTableName, geomField)
 				if err != nil {
 					return "", fmt.Errorf("failed to get columns for table %s: %w", mvtTableName, err)
 				}

@@ -1136,12 +1136,18 @@ func (p Provider) MVTForLayers(
 				return baseTolerance
 			}(int(z))
 
+			// 获取动态列
+			colList, err := provider.GetColumnsFromDB(ctx, p.pool.Pool, replacedMVTName, l.GeomFieldName())
+			if err != nil {
+				return nil, fmt.Errorf("failed to get columns for table %s: %w", replacedMVTName, err)
+			}
+
 			sql = fmt.Sprintf(`
 				WITH tile_extent AS (
 					SELECT ST_TileEnvelope(%d, %d, %d) AS envelope
 				)
 				SELECT
-					id,
+					%s,
 					ST_AsMVTGeom(
 						ST_Simplify(%s, %.2f),
 						te.envelope,
@@ -1154,6 +1160,7 @@ func (p Provider) MVTForLayers(
 				ORDER BY ST_Area(t.%s) DESC
 				LIMIT 1500`,
 				int(z), int(x), int(y),
+				colList, // 使用动态列替换硬编码的id
 				l.GeomFieldName(),
 				simplifyTolerance,
 				l.GeomFieldName(),
@@ -1161,6 +1168,7 @@ func (p Provider) MVTForLayers(
 				l.GeomFieldName(),
 				bbox,
 				l.GeomFieldName())
+			//log.Infof("这是我的最后的sql%v:", sql)
 		} else {
 			// 使用原始SQL
 			if debugLayerSQL {

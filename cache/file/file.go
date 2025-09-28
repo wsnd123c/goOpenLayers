@@ -81,7 +81,7 @@ func (fc *Cache) Get(ctx context.Context, key *cache.Key) ([]byte, bool, error) 
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Infof("❌ 缓存未命中: 文件不存在 path=%s", path)
+			//log.Infof("❌ 缓存未命中: 文件不存在 path=%s", path)
 			return nil, false, nil
 		}
 
@@ -109,7 +109,7 @@ func (fc *Cache) Get(ctx context.Context, key *cache.Key) ([]byte, bool, error) 
 
 func (fc *Cache) Set(ctx context.Context, key *cache.Key, val []byte) error {
 	var err error
-	log.Info("文件缓存执行")
+	//log.Info("文件缓存执行")
 	// check for maxzoom
 	if key.Z > fc.MaxZoom {
 		return nil

@@ -40,7 +40,7 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 		hasTaskId := strings.Contains(r.URL.RawQuery, "task_id=")
 		hasIsSlice := strings.Contains(r.URL.RawQuery, "isSlice=")
 		if r.URL.RawQuery != "" && !(hasTaskId || hasIsSlice) {
-			log.Infof("DEBUG缓存中间件: 跳过缓存，不支持的查询参数: %s", r.URL.RawQuery)
+			//log.Infof("DEBUG缓存中间件: 跳过缓存，不支持的查询参数: %s", r.URL.RawQuery)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -63,7 +63,7 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 			// 生成查询参数的MD5 hash
 			queryHash := fmt.Sprintf("%x", md5.Sum([]byte(r.URL.RawQuery)))
 			key.MapName = key.MapName + "_" + queryHash
-			log.Infof("DEBUG缓存中间件: 查询参数 '%s' 转换为hash: %s", r.URL.RawQuery, queryHash)
+			//log.Infof("DEBUG缓存中间件: 查询参数 '%s' 转换为hash: %s", r.URL.RawQuery, queryHash)
 		}
 
 		//log.Infof("DEBUG缓存中间件: 缓存key: %s", key.String())
@@ -114,7 +114,7 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 			return
 		}
 
-		log.Infof("DEBUG缓存中间件: 缓存命中，返回缓存数据，key: %s, 大小: %d bytes", key.String(), len(cachedTile))
+		//log.Infof("DEBUG缓存中间件: 缓存命中，返回缓存数据，key: %s, 大小: %d bytes", key.String(), len(cachedTile))
 
 		// mimetype for mapbox vector tiles
 		w.Header().Add("Content-Type", mvt.MimeType)
@@ -148,7 +148,7 @@ type tileCacheResponseWriter struct {
 }
 
 func (w *tileCacheResponseWriter) Header() http.Header {
-	log.Infof("DEBUG缓存ResponseWriter: Header()方法被调用")
+	//log.Infof("DEBUG缓存ResponseWriter: Header()方法被调用")
 	// communicate the cache is being used
 	w.resp.Header().Set("Tegola-Cache", "MISS")
 
