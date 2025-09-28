@@ -132,6 +132,9 @@ type Provider struct {
 	// Collectors for Query times
 	mvtProviderQueryHistogramSeconds *prometheus.HistogramVec
 	queryHistogramSeconds            *prometheus.HistogramVec
+
+	// 添加列信息缓存，避免重复查询数据库
+	columnCache map[string]string
 }
 
 func (p *Provider) Collectors(
@@ -468,9 +471,10 @@ func CreateProvider(
 	}
 
 	p := Provider{
-		srid:   uint64(srid),
-		config: *dbconfig,
-		name:   name,
+		srid:        uint64(srid),
+		config:      *dbconfig,
+		name:        name,
+		columnCache: make(map[string]string), // 初始化列信息缓存
 	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), &p.config)
@@ -1157,13 +1161,13 @@ func (p Provider) MVTForLayers(
 			sql,
 		))
 	}
-	log.Infof("这是我的sql: %v", sqls)
+	//log.Infof("这是我的sql: %v", sqls)
 	subsqls := strings.Join(sqls, "||")
 
 	fsql := fmt.Sprintf(`SELECT (%s) AS data`, subsqls)
 
 	// 记录最终执行的SQL
-	log.Infof(" 最终执行SQL: %s", fsql)
+	//log.Infof(" 最终执行SQL: %s", fsql)
 
 	var data []byte
 
@@ -1176,8 +1180,8 @@ func (p Provider) MVTForLayers(
 
 		// 记录查询执行时间和结果
 		queryTime := time.Since(now)
-		log.Infof("🔍 SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
-			float64(queryTime.Nanoseconds())/1000000, len(data))
+		//log.Infof("🔍 SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
+		//	float64(queryTime.Nanoseconds())/1000000, len(data))
 
 		if p.mvtProviderQueryHistogramSeconds != nil {
 			z, _, _ := tile.ZXY()
@@ -1192,8 +1196,8 @@ func (p Provider) MVTForLayers(
 	// 强制记录瓦片大小信息
 	z, x, y := tile.ZXY()
 	tileSizeKB := float64(len(data)) / 1024.0
-	log.Infof("瓦片大小 - Z:%d X:%d Y:%d, 原始数据: %d bytes (%.2f KB)",
-		z, x, y, len(data), tileSizeKB)
+	//log.Infof("瓦片大小 - Z:%d X:%d Y:%d, 原始数据: %d bytes (%.2f KB)",
+	//	z, x, y, len(data), tileSizeKB)
 
 	// 如果数据为空，记录详细信息用于调试
 	if len(data) == 0 {
@@ -1205,6 +1209,7 @@ func (p Provider) MVTForLayers(
 
 		// 重新生成优化的SQL
 		optimizedData, err := p.generateSimplifiedTile(ctx, tile, params, layers, mapName, args)
+
 		if err != nil {
 			log.Errorf("优化瓦片失败: %v", err)
 			return data, nil // 返回原始数据
@@ -1263,10 +1268,7 @@ func (p Provider) generateSimplifiedTile(
 		var mvtNameArgs []any
 		replacedMVTName := params.ReplaceParams(rawMVTName, &mvtNameArgs)
 
-		// 获取瓦片边界
-		extent, _ := tile.BufferedExtent()
-		bbox := fmt.Sprintf("ST_MakeEnvelope(%.8f,%.8f,%.8f,%.8f,%d)",
-			extent.MinX(), extent.MinY(), extent.MaxX(), extent.MaxY(), 3857)
+		// 注意：瓦片边界现在直接在SQL中使用 ST_TileEnvelope 函数生成，更高效
 		//simplifyTolerance := math.Pow(2, float64(uint(20-z))) * 0.5
 		//simplifyTolerance := math.Pow(1.5, float64(18-z)) * 0.3
 		simplifyTolerance := func(z int) float64 {
@@ -1281,33 +1283,72 @@ func (p Provider) generateSimplifiedTile(
 			return baseTolerance
 		}(int(z))
 
+		// 动态获取所有列（带缓存优化）
+		var colList string
+		if cachedCols, exists := p.columnCache[replacedMVTName]; exists {
+			// 使用缓存的列信息
+			colList = cachedCols
+		} else {
+			// 第一次获取，查询数据库并缓存结果
+			var err error
+			colList, err = provider.GetColumnsFromDB(ctx, p.pool.Pool, replacedMVTName, l.GeomFieldName())
+			if err != nil {
+				log.Errorf("获取表 %s 的列信息失败: %v", replacedMVTName, err)
+				// 如果获取列失败，使用通配符
+				colList = "*"
+			} else {
+				// 缓存成功获取的列信息
+				p.columnCache[replacedMVTName] = colList
+			}
+		}
+
+		// 优化的SQL查询：使用更高效的查询结构
 		simplifiedSQL := fmt.Sprintf(`
-    WITH tile_extent AS (
-        SELECT ST_TileEnvelope(%d, %d, %d) AS envelope
+    WITH tile_envelope AS (
+        SELECT ST_TileEnvelope(%d, %d, %d) AS geom
+    ),
+    filtered_data AS (
+        SELECT %s,
+               %s
+        FROM %s t
+        WHERE t.%s && (SELECT geom FROM tile_envelope)
+          AND ST_Area(t.%s) > %.2f  -- 预过滤小几何图形
+        ORDER BY ST_Area(t.%s) DESC
+        LIMIT 1500
     )
-    SELECT
-        id,
-        ST_AsMVTGeom(
-            ST_Simplify(%s, %.2f),
-            te.envelope,
-            4096,
-            256,
-            true
-        ) AS %s
-    FROM %s t, tile_extent te
-    WHERE t.%s && %s
-    ORDER BY ST_Area(t.%s) DESC
-    LIMIT 1500
+    SELECT %s,
+           ST_AsMVTGeom(
+               ST_Simplify(%s, %.2f),
+               (SELECT geom FROM tile_envelope),
+               4096,
+               256,
+               true
+           ) AS %s
+    FROM filtered_data
+    WHERE ST_AsMVTGeom(
+               ST_Simplify(%s, %.2f),
+               (SELECT geom FROM tile_envelope),
+               4096,
+               256,
+               true
+           ) IS NOT NULL
 `,
 			int(z), int(x), int(y),
-			l.GeomFieldName(),
-			simplifyTolerance,
-			l.GeomFieldName(),
-			replacedMVTName,
-			l.GeomFieldName(),
-			bbox,
-			l.GeomFieldName())
-
+			colList,               // 动态列
+			l.GeomFieldName(),     // 几何字段
+			replacedMVTName,       // 表名
+			l.GeomFieldName(),     // WHERE条件中的几何字段
+			l.GeomFieldName(),     // 面积计算中的几何字段
+			simplifyTolerance*0.1, // 预过滤阈值，比简化容差小
+			l.GeomFieldName(),     // ORDER BY中的几何字段
+			colList,               // SELECT中的动态列
+			l.GeomFieldName(),     // ST_Simplify中的几何字段
+			simplifyTolerance,     // 简化容差
+			l.GeomFieldName(),     // 输出几何字段名
+			l.GeomFieldName(),     // WHERE IS NOT NULL检查中的几何字段
+			simplifyTolerance,     // 简化容差（重复使用）
+		)
+		//log.Infof("这是重新生成的sql%v", simplifiedSQL)
 		//%%%%%%%%%%%%%%%%%%%%%%%%
 		//simplifiedSQL := fmt.Sprintf(`
 		//SELECT
@@ -1352,15 +1393,16 @@ func (p Provider) generateSimplifiedTile(
 	subsqls := strings.Join(sqls, "||")
 	fsql := fmt.Sprintf(`SELECT (%s) AS data`, subsqls)
 
-	log.Infof("执行简化SQL: %s", fsql)
+	//log.Infof("执行简化SQL: %s", fsql)
 
 	var data []byte
 	now := time.Now()
 	err = p.pool.QueryRow(ctx, fsql, args...).Scan(&data)
 
 	queryTime := time.Since(now)
-	log.Infof("简化SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
-		float64(queryTime.Nanoseconds())/1000000, len(data))
+	_ = queryTime
+	//log.Infof("简化SQL查询完成 - 执行时间: %.2fms, 返回数据: %d bytes",
+	//	float64(queryTime.Nanoseconds())/1000000, len(data))
 
 	if err := ctxErr(ctx, err); err != nil {
 		return []byte{}, err
@@ -1378,7 +1420,7 @@ var providers []Provider
 // Cleanup will close all database connections and destroy all previously instantiated Provider instances
 func Cleanup() {
 	if len(providers) > 0 {
-		log.Infof("cleaning up postgis providers")
+		//log.Infof("cleaning up postgis providers")
 	}
 
 	for i := range providers {
