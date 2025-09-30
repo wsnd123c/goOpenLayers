@@ -1254,12 +1254,32 @@ func (p Provider) MVTForLayers(
 		return data, nil
 	}
 
-	// 智能化缩放级别判断 - 根据数据大小和缩放级别决定是否简化
+	// 智能化缩放级别判断 - 低缩放级别加大优化力度
 	z, _, _ := tile.ZXY()
 	dataSize := len(data)
 
-	// 如果数据量大或者缩放级别低，使用简化瓦片
-	shouldSimplify := (z <= 14) || (z <= 16 && dataSize > 512*1024) // 512KB
+	// 根据缩放级别决定优化策略，低缩放级别更激进
+	var shouldSimplify bool
+	switch {
+	case z <= 8:
+		// 极低缩放级别，强制简化
+		shouldSimplify = true
+	case z <= 10:
+		// 很低缩放级别，数据量稍大就简化
+		shouldSimplify = dataSize > 128*1024 // 128KB
+	case z <= 12:
+		// 低缩放级别，数据量较小也简化
+		shouldSimplify = dataSize > 256*1024 // 256KB
+	case z <= 14:
+		// 中低缩放级别，数据量适中时简化
+		shouldSimplify = dataSize > 512*1024 // 512KB
+	case z <= 16:
+		// 中等缩放级别，数据量很大时简化
+		shouldSimplify = dataSize > 1024*1024 // 1MB
+	default:
+		// 高缩放级别，不简化
+		shouldSimplify = false
+	}
 
 	if shouldSimplify {
 		optimizedData, err := p.generateSimplifiedTile(ctx, tile, params, layers, mapName, args)
@@ -1268,8 +1288,8 @@ func (p Provider) MVTForLayers(
 			return data, nil // 返回原始数据
 		}
 
-		// 只有在简化后确实减小了数据量时才使用简化版本
-		if len(optimizedData) < dataSize || len(optimizedData) > 0 && dataSize == 0 {
+		// 低缩放级别更激进地使用简化版本
+		if z <= 10 || len(optimizedData) < dataSize || len(optimizedData) > 0 && dataSize == 0 {
 			return optimizedData, nil
 		}
 	}
@@ -1291,16 +1311,65 @@ func (p Provider) generateSimplifiedTile(
 	// 使用公共方法构建简化的SQL
 	sqls, err := p.buildLayerSQLs(ctx, tile, params, layers, &args,
 		func(info layerSQLInfo, args *[]any) (string, error) {
-			// 计算简化容差
+			// 计算简化容差 - 12级以下加大简化力度
 			simplifyTolerance := func(z int) float64 {
-				baseTolerance := math.Pow(2.0, float64(16-z)) * 1.0
+				var baseTolerance float64
+				switch {
+				case z <= 8:
+					// 极低缩放级别，大幅简化
+					baseTolerance = math.Pow(2.0, float64(16-z)) * 3.5
+				case z <= 10:
+					// 很低缩放级别，加大简化
+					baseTolerance = math.Pow(2.0, float64(16-z)) * 2.5
+				case z <= 12:
+					// 低缩放级别(包括z=11)，加大简化
+					baseTolerance = math.Pow(2.0, float64(16-z)) * 2.0
+				default:
+					// 正常缩放级别
+					baseTolerance = math.Pow(2.0, float64(16-z)) * 1.0
+				}
+
 				if baseTolerance < 0.5 {
 					return 0.5
 				}
-				if baseTolerance > 500 {
-					return 500
+				if baseTolerance > 1000 {
+					return 1000
 				}
 				return baseTolerance
+			}(int(z))
+
+			// 根据缩放级别动态设置数据限制 - 12级以下加强优化
+			dataLimit := func(z int) int {
+				switch {
+				case z <= 6:
+					return 50 // 极低缩放级别，极严格限制
+				case z <= 8:
+					return 80 // 很低缩放级别，严格限制数据量
+				case z <= 10:
+					return 150 // 低缩放级别，严格限制
+				case z <= 12:
+					return 300 // 中低缩放级别(包括z=11)，加强限制
+				case z <= 14:
+					return 600 // 中等缩放级别
+				default:
+					return 800 // 正常缩放级别
+				}
+			}(int(z))
+
+			// 计算最小面积阈值 - 12级以下过滤小几何
+			minAreaThreshold := func(z int) float64 {
+				switch {
+				case z <= 6:
+					return 1000000.0 // 1平方公里，过滤极小几何
+				case z <= 8:
+					return 100000.0 // 0.1平方公里
+				case z <= 10:
+					return 10000.0 // 0.01平方公里
+				case z <= 12:
+					return 1000.0 // 0.001平方公里，包括z=11适度过滤
+				default:
+					return 0.0 // 不过滤
+				}
 			}(int(z))
 
 			// 动态获取所有列（带缓存优化）
@@ -1332,12 +1401,16 @@ spatial_filter AS (
   JOIN tile ON true
   WHERE t.%s && tile.env
     AND ST_Intersects(t.%s, tile.env)
+    AND CASE 
+      WHEN %d <= 12 THEN ST_Area(t.%s) > %f  -- 12级以下过滤小几何
+      ELSE true
+    END
   ORDER BY
     CASE
       WHEN ST_GeometryType(t.%s) IN ('ST_Point','ST_MultiPoint') THEN 1
       ELSE ST_Area(g_clip)
     END DESC
-  LIMIT 800
+  LIMIT %d
 ),
 mvt AS (
   SELECT
@@ -1369,7 +1442,9 @@ WHERE m.%s IS NOT NULL
 				info.replacedMVTName,
 				info.layerDef.GeomFieldName(),
 				info.layerDef.GeomFieldName(),
+				int(z), info.layerDef.GeomFieldName(), minAreaThreshold, // 面积过滤参数
 				info.layerDef.GeomFieldName(),
+				dataLimit, // 动态数据限制
 				colList,
 				simplifyTolerance,
 				info.layerDef.GeomFieldName(),
