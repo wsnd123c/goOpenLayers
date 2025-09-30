@@ -186,6 +186,51 @@ func registerGinRoutes() {
 		}
 	})
 
+	// 新增的进度查询接口
+	ginRouter.GET("/progress", func(c *gin.Context) {
+		taskID := c.Query("task_id")
+		if taskID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code":    400,
+				"message": "task_id参数不能为空",
+			})
+			return
+		}
+
+		handleMutex.Lock()
+		handle, exists := currentHandles[taskID]
+		handleMutex.Unlock()
+
+		if !exists || handle == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"code":       200,
+				"message":    "任务不存在或已完成",
+				"task_id":    taskID,
+				"completed":  0,
+				"total":      0,
+				"percentage": 0.0,
+				"isRunning":  false,
+			})
+			return
+		}
+
+		completed, total, percentage := handle.GetProgress()
+		isRunning := completed < total
+
+		c.JSON(http.StatusOK, gin.H{
+			"code":       200,
+			"message":    "获取进度成功",
+			"task_id":    taskID,
+			"completed":  completed,
+			"total":      total,
+			"percentage": percentage,
+			"isRunning":  isRunning,
+		})
+
+		log.Infof("接口查询任务 %s 进度: 已完成 %d / %d (%.2f%%) isRunning=%v",
+			taskID, completed, total, percentage, isRunning)
+	})
+
 	// Socket.IO进度推送
 	ginRouter.GET("/socket.io/*any", gin.WrapH(ioServer.HttpHandler()))
 	ginRouter.POST("/socket.io/*any", gin.WrapH(ioServer.HttpHandler()))
