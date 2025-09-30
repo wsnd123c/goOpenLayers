@@ -1211,7 +1211,7 @@ func (p Provider) MVTForLayers(
 		optimizedData, err := p.generateSimplifiedTile(ctx, tile, params, layers, mapName, args)
 
 		if err != nil {
-			log.Errorf("优化瓦片失败: %v", err)
+			//log.Errorf("优化瓦片失败: %v", err)
 			return data, nil // 返回原始数据
 		}
 
@@ -1302,52 +1302,41 @@ func (p Provider) generateSimplifiedTile(
 			}
 		}
 
-		// 优化的SQL查询：使用更高效的查询结构
+		// 优化的SQL查询：使用更高效的查询结构的
 		simplifiedSQL := fmt.Sprintf(`
-    WITH tile_envelope AS (
-        SELECT ST_TileEnvelope(%d, %d, %d) AS geom
-    ),
-    filtered_data AS (
-        SELECT %s,
-               %s
-        FROM %s t
-        WHERE t.%s && (SELECT geom FROM tile_envelope)
-          AND ST_Area(t.%s) > %.2f  -- 预过滤小几何图形
-        ORDER BY ST_Area(t.%s) DESC
-        LIMIT 1500
-    )
-    SELECT %s,
-           ST_AsMVTGeom(
-               ST_Simplify(%s, %.2f),
-               (SELECT geom FROM tile_envelope),
-               4096,
-               256,
-               true
-           ) AS %s
-    FROM filtered_data
-    WHERE ST_AsMVTGeom(
-               ST_Simplify(%s, %.2f),
-               (SELECT geom FROM tile_envelope),
-               4096,
-               256,
-               true
-           ) IS NOT NULL
+WITH tile AS (
+  SELECT ST_TileEnvelope(%d, %d, %d) AS env
+)
+SELECT %s, g.%s
+FROM %s t
+CROSS JOIN tile
+CROSS JOIN LATERAL (
+  SELECT ST_AsMVTGeom(
+           ST_Simplify(
+             ST_ClipByBox2D(t.%s, box2d(tile.env)),
+             %.6f
+           ),
+           tile.env, 4096, 256, true
+         ) AS %s
+) AS g
+WHERE t.%s && tile.env
+  AND ST_Area(t.%s) > %.6f
+  AND g.%s IS NOT NULL
+LIMIT 1500
 `,
 			int(z), int(x), int(y),
-			colList,               // 动态列
-			l.GeomFieldName(),     // 几何字段
-			replacedMVTName,       // 表名
-			l.GeomFieldName(),     // WHERE条件中的几何字段
-			l.GeomFieldName(),     // 面积计算中的几何字段
-			simplifyTolerance*0.1, // 预过滤阈值，比简化容差小
-			l.GeomFieldName(),     // ORDER BY中的几何字段
-			colList,               // SELECT中的动态列
-			l.GeomFieldName(),     // ST_Simplify中的几何字段
-			simplifyTolerance,     // 简化容差
-			l.GeomFieldName(),     // 输出几何字段名
-			l.GeomFieldName(),     // WHERE IS NOT NULL检查中的几何字段
-			simplifyTolerance,     // 简化容差（重复使用）
+			colList, // 你的动态列
+			l.GeomFieldName(),
+			replacedMVTName,
+			l.GeomFieldName(),
+			simplifyTolerance,
+			l.GeomFieldName(),
+			l.GeomFieldName(),
+			l.GeomFieldName(),
+			simplifyTolerance*0.1,
+			l.GeomFieldName(),
 		)
+
 		//log.Infof("这是重新生成的sql%v", simplifiedSQL)
 		//%%%%%%%%%%%%%%%%%%%%%%%%
 		//simplifiedSQL := fmt.Sprintf(`
