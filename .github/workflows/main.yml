@@ -1,0 +1,33 @@
+name: Build ARM64 Docker Image
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up QEMU for ARM64
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build ARM64 image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/arm64
+        tags: your-username/tegola:arm64-latest
+        push: false  # 设置为 true 如果要推送到镜像仓库
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
