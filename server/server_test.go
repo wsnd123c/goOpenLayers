@@ -158,13 +158,13 @@ func TestURLRoot(t *testing.T) {
 	}
 
 	tests := map[string]tcase{
-		"http": {
+		"myhttp": {
 			request: http.Request{},
 			hostName: &url.URL{
 				Host: serverHostName,
 			},
 			expected: &url.URL{
-				Scheme: "http",
+				Scheme: "myhttp",
 				Host:   serverHostName,
 			},
 		},

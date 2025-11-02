@@ -1,4 +1,4 @@
-// Package server implements the http frontend
+// Package server implements the myhttp frontend
 package server
 
 import (
@@ -7,8 +7,10 @@ import (
 	"os"
 
 	"github.com/dimfeld/httptreemux"
+	"github.com/go-spatial/tegola/server/myhttp"
 
 	"github.com/go-spatial/tegola/atlas"
+	"github.com/go-spatial/tegola/config"
 	"github.com/go-spatial/tegola/internal/build"
 	"github.com/go-spatial/tegola/internal/log"
 	"github.com/go-spatial/tegola/observability"
@@ -66,12 +68,26 @@ var (
 
 // NewRouter set's up our routes.
 func NewRouter(a *atlas.Atlas) *httptreemux.TreeMux {
+	// use default atlas if nil is passed - create a proper atlas instance that delegates to default
+	if a == nil {
+		// Create a new atlas instance but populate it with default atlas data
+		a = &atlas.Atlas{}
+		// Get cache from the default atlas
+		if defaultCache := atlas.GetCache(); defaultCache != nil {
+			a.SetCache(defaultCache)
+		}
+		// Copy maps from default atlas
+		for _, m := range atlas.AllMaps() {
+			a.AddMap(m)
+		}
+	}
 	o := a.Observer()
 	r := httptreemux.New()
 	group := r.NewGroup(URIPrefix)
 
 	// one handler to respond to all OPTIONS requests for registered routes with our CORS headers
 	r.OptionsHandler = corsHandler
+	// 集成Gin路由到/api路径下
 
 	if o != nil && o != observability.NullObserver {
 		const (
@@ -103,7 +119,7 @@ func NewRouter(a *atlas.Atlas) *httptreemux.TreeMux {
 
 	// setup viewer routes, which can be excluded via build flags
 	setupViewer(o, group)
-
+	myhttp.InitGin(r)
 	return r
 }
 
@@ -129,7 +145,7 @@ func Start(a *atlas.Atlas, port string) *http.Server {
 			// noop
 			return
 		case http.ErrServerClosed:
-			log.Info("http server closed")
+			log.Info("myhttp server closed")
 			return
 		default:
 			log.Error(err)
@@ -164,7 +180,7 @@ const (
 	HeaderXForwardedProto = "X-Forwarded-Proto"
 )
 
-// various checks to determine if the request is http or https. the scheme is needed for the TileURLs
+// various checks to determine if the request is myhttp or https. the scheme is needed for the TileURLs
 // r.URL.Scheme can be empty if a relative request is issued from the client. (i.e. GET /foo.html)
 func scheme(r *http.Request) string {
 	if ProxyProtocol != "" {
@@ -215,4 +231,9 @@ func setHeaders(w http.ResponseWriter) {
 
 		w.Header().Set(name, val)
 	}
+}
+
+// SetGlobalConfig 设置全局配置并传递给 myhttp 模块
+func SetGlobalConfig(conf *config.Config) {
+	myhttp.SetConfig(conf)
 }

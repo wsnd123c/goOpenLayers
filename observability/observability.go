@@ -68,13 +68,13 @@ type Interface interface {
 }
 
 type APIObserver interface {
-	// InstrumentedAPIHttpHandler returns an http.Handler that will instrument the given http handler, for the
+	// InstrumentedAPIHttpHandler returns an http.Handler that will instrument the given myhttp handler, for the
 	// route and method that was given
 	InstrumentedAPIHttpHandler(method, route string, handler http.Handler) http.Handler
 }
 
 type ViewerObserver interface {
-	// InstrumentedViewerHttpHandler returns an http.Handler that will instrument the given http handler, for the
+	// InstrumentedViewerHttpHandler returns an http.Handler that will instrument the given myhttp handler, for the
 	// route and method that was given
 	InstrumentedViewerHttpHandler(method, route string, handler http.Handler) http.Handler
 }

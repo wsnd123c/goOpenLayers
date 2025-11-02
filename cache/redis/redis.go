@@ -61,8 +61,6 @@ func CreateOptions(c dict.Dicter) (opts *redis.Options, err error) {
 		return opts, nil
 	}
 
-	log.Warn("connecting to redis using 'Addr' is deprecated. use 'uri' instead.")
-
 	network, err := c.String(ConfigKeyNetwork, &defaultNetwork)
 	if err != nil {
 		return nil, err
@@ -119,13 +117,14 @@ func New(c dict.Dicter) (rcache cache.Interface, err error) {
 	if err != nil {
 		return nil, err
 	}
-
 	client := redis.NewClient(opts)
 
 	pong, err := client.Ping(ctx).Result()
 	if err != nil {
+		fmt.Println("Error connecting to Redis:", err)
 		return nil, err
 	}
+	fmt.Println("Redis connected successfully:", pong)
 	if pong != "PONG" {
 		return nil, fmt.Errorf("redis did not respond with 'PONG', '%s'", pong)
 	}
@@ -159,20 +158,29 @@ func (rdc *RedisCache) Set(ctx context.Context, key *cache.Key, val []byte) erro
 		return nil
 	}
 
-	return rdc.Redis.
-		Set(ctx, key.String(), val, rdc.Expiration).
-		Err()
+	keyStr := key.String()
+	err := rdc.Redis.Set(ctx, keyStr, val, rdc.Expiration).Err()
+	if err != nil {
+		log.Errorf("Redis缓存写入失败: key=%s, error=%v", keyStr, err)
+	} else {
+		log.Infof("Redis缓存写入成功: key=%s, size=%d bytes", keyStr, len(val))
+	}
+	return err
 }
 
 func (rdc *RedisCache) Get(ctx context.Context, key *cache.Key) (val []byte, hit bool, err error) {
-	val, err = rdc.Redis.Get(ctx, key.String()).Bytes()
+	keyStr := key.String()
+	val, err = rdc.Redis.Get(ctx, keyStr).Bytes()
 
 	switch err {
 	case nil: // cache hit
+		log.Infof("Redis缓存命中: key=%s, size=%d bytes", keyStr, len(val))
 		return val, true, nil
 	case redis.Nil: // cache miss
+		log.Infof("Redis缓存未命中: key=%s", keyStr)
 		return val, false, nil
 	default: // error
+		log.Errorf("Redis缓存读取错误: key=%s, error=%v", keyStr, err)
 		return val, false, err
 	}
 }

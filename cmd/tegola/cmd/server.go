@@ -104,6 +104,9 @@ var serverCmd = &cobra.Command{
 			log.Info("No app config source configured")
 		}
 
+		// 将配置传递给 myhttp 模块
+		server.SetGlobalConfig(&conf)
+
 		// start our webserver
 		srv := server.Start(nil, serverPort)
 		shutdown(srv)
@@ -168,21 +171,24 @@ func initConfigSource(ctx context.Context) *source.ConfigWatcher {
 }
 
 func handleConfigUpdate(app source.App) {
-	log.Infof("Handling config update for app: %s", app.Key)
-	log.Infof("Providers: %+v", app.Providers)
-	log.Infof("Maps: %+v", app.Maps)
-	
+
+	//这是个map的打印
 	// convert providers to dict.Dicter format
 	provArr := make([]dict.Dicter, len(app.Providers))
 	for i := range provArr {
 		provArr[i] = app.Providers[i]
+		fmt.Println(provArr[i])
 	}
 
 	// register new providers
-	providers, err := register.Providers(provArr, app.Maps)
+	providers, err := register.Providers(provArr, app.Maps, nil, nil)
+	fmt.Printf("这是provArr:%+v\n", provArr)
 	if err != nil {
 		log.Errorf("Failed to register providers for app %s: %v", app.Key, err)
 		return
+	}
+	for i, p := range app.Providers {
+		fmt.Printf("Provider[%d] = %#v\n", i, p)
 	}
 
 	// register new maps

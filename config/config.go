@@ -43,6 +43,7 @@ var ReservedTokens = map[string]struct{}{
 	IdFieldToken:          {},
 	GeomFieldToken:        {},
 	GeomTypeToken:         {},
+	"!COLUMNS!":           {},
 }
 
 var blacklistHeaders = []string{"content-encoding", "content-length", "content-type"}
@@ -51,14 +52,14 @@ var blacklistHeaders = []string{"content-encoding", "content-length", "content-t
 type Config struct {
 	// the tile buffer to use
 	TileBuffer *env.Int `toml:"tile_buffer"`
-	// LocationName is the file name or http server that the config was read from.
+	// LocationName is the file name or myhttp server that the config was read from.
 	// If this is an empty string, it means that the location was unknown. This is the case if
 	// the Parse() function is used directly.
-	LocationName string
-	Webserver        Webserver `toml:"webserver"`
-	Cache            env.Dict  `toml:"cache"`
-	Observer         env.Dict  `toml:"observer"`
-	AppConfigSource  env.Dict  `toml:"app_config_source"`
+	LocationName    string
+	Webserver       Webserver `toml:"webserver"`
+	Cache           env.Dict  `toml:"cache"`
+	Observer        env.Dict  `toml:"observer"`
+	AppConfigSource env.Dict  `toml:"app_config_source"`
 	// Map of providers.
 	//  all providers must have at least two entries.
 	// 1. name -- this is the name that is referenced in
@@ -361,10 +362,12 @@ func (c *Config) ConfigureTileBuffers() {
 func Parse(reader io.Reader, location string) (conf Config, err error) {
 	// decode conf file, don't care about the meta data.
 	_, err = toml.NewDecoder(reader).Decode(&conf)
+	fmt.Printf("Raw Providers: %#v\n", conf.Providers)
+
 	if err != nil {
 		return conf, err
 	}
-
+	fmt.Printf("Raw Providers from TOML: %#v\n", conf.Providers)
 	for _, m := range conf.Maps {
 		for k, p := range m.Parameters {
 			p.Normalize()
@@ -383,16 +386,16 @@ func Parse(reader io.Reader, location string) (conf Config, err error) {
 func Load(location string) (conf Config, err error) {
 	var reader io.Reader
 
-	// check for http prefix
-	if strings.HasPrefix(location, "http") {
+	// check for myhttp prefix
+	if strings.HasPrefix(location, "myhttp") {
 		log.Infof("loading remote config (%v)", location)
 
-		// setup http client with a timeout
+		// setup myhttp client with a timeout
 		var httpClient = &http.Client{
 			Timeout: time.Second * 10,
 		}
 
-		// make the http request
+		// make the myhttp request
 		res, err := httpClient.Get(location)
 		if err != nil {
 			return conf, fmt.Errorf("error fetching remote config file (%v): %v ", location, err)

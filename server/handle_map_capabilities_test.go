@@ -87,7 +87,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 				TileJSON:    tilejson.Version,
 				Tiles: []string{
 					server.TileURLTemplate{
-						Scheme:  "http",
+						Scheme:  "myhttp",
 						Host:    "localhost:8080",
 						MapName: "test-map",
 					}.String(),
@@ -108,7 +108,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      testLayer3.MaxZoom, // layer 1 and layer 3 share a name in our test so the zoom range includes the entire zoom range
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "localhost:8080",
 								MapName:   "test-map",
 								LayerName: testLayer1.MVTName(),
@@ -125,7 +125,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      testLayer2.MaxZoom,
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "localhost:8080",
 								MapName:   "test-map",
 								LayerName: testLayer2.MVTName(),
@@ -156,7 +156,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 				TileJSON:    tilejson.Version,
 				Tiles: []string{
 					server.TileURLTemplate{
-						Scheme:  "http",
+						Scheme:  "myhttp",
 						Host:    "cdn.tegola.io",
 						MapName: "test-map",
 						Query: url.Values{
@@ -182,7 +182,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      testLayer3.MaxZoom, // layer 1 and layer 3 share a name in our test so the zoom range includes the entire zoom range
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: testLayer1.MVTName(),
@@ -204,7 +204,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      testLayer2.MaxZoom,
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: testLayer2.MVTName(),
@@ -226,7 +226,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      atlas.MaxZoom,
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: "debug-tile-outline",
@@ -248,7 +248,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      atlas.MaxZoom,
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: "debug-tile-center",
@@ -289,7 +289,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 				TileJSON:    tilejson.Version,
 				Tiles: []string{
 					server.TileURLTemplate{
-						Scheme:  "http",
+						Scheme:  "myhttp",
 						Host:    "cdn.tegola.io",
 						MapName: "test-map",
 						Query: url.Values{
@@ -315,7 +315,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      testLayer3.MaxZoom, // layer 1 and layer 3 share a name in our test so the zoom range includes the entire zoom range
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: testLayer1.MVTName(),
@@ -337,7 +337,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      testLayer2.MaxZoom,
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: testLayer2.MVTName(),
@@ -359,7 +359,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      atlas.MaxZoom,
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: "debug-tile-outline",
@@ -381,7 +381,7 @@ func TestHandleMapCapabilities(t *testing.T) {
 						MaxZoom:      atlas.MaxZoom,
 						Tiles: []string{
 							server.TileURLTemplate{
-								Scheme:    "http",
+								Scheme:    "myhttp",
 								Host:      "cdn.tegola.io",
 								MapName:   "test-map",
 								LayerName: "debug-tile-center",

@@ -14,14 +14,13 @@ import (
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/cache/redis"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/internal/ttools"
 )
 
 // TESTENV is the environment variable that must be set to "yes" to run the redis tests.
-const TESTENV = "RUN_REDIS_TESTS"
+var TESTENV = "RUN_REDIS_TESTS"
 
 func TestCreateOptions(t *testing.T) {
-	ttools.ShouldSkip(t, TESTENV)
+	TESTENV = "yes"
 
 	type tcase struct {
 		name        string
@@ -239,7 +238,6 @@ func compareOptions(t *testing.T, actual, expected *goredis.Options) {
 // TestNew will run tests against a local redis instance
 // on 127.0.0.1:6379
 func TestNew(t *testing.T) {
-	ttools.ShouldSkip(t, TESTENV)
 
 	type tcase struct {
 		config      dict.Dict
@@ -375,7 +373,6 @@ func TestNew(t *testing.T) {
 }
 
 func TestSetGetPurge(t *testing.T) {
-	ttools.ShouldSkip(t, TESTENV)
 
 	ctx := context.Background()
 	type tcase struct {
@@ -459,7 +456,6 @@ func TestSetGetPurge(t *testing.T) {
 }
 
 func TestSetOverwrite(t *testing.T) {
-	ttools.ShouldSkip(t, TESTENV)
 
 	ctx := context.Background()
 	type tcase struct {
@@ -534,7 +530,7 @@ func TestSetOverwrite(t *testing.T) {
 }
 
 func TestMaxZoom(t *testing.T) {
-	ttools.ShouldSkip(t, TESTENV)
+
 	ctx := context.Background()
 
 	type tcase struct {

@@ -1,14 +1,53 @@
 
-
 [webserver]
-port = ":19089"
+port = ":19091"
 
-[app_config_source]
-ip = '127.0.0.1'
-port = '8848'
-type = "nacos"
-nameSpaceId = 'public'
-dataId = 'tegola_test'
-group = 'DEFAULT_GROUP'
-username = 'nacos'
-password = 'dky666dky'
+[cache]
+type="file"
+basepath = "D:/temp/tegola-cache"
+max_zoom="22"
+
+# PostGIS数据提供者配置
+[[providers]]
+name = "inference_database" # 数据源名称（唯一标识）
+type = "mvt_postgis"            # 数据源类型      # 数据源类型
+uri = "postgres://postgres:postgres@127.0.0.1:5432/inference_database?sslmode=disable&pool_max_conns=20&pool_min_conns=5"
+srid = 3857               # 输出瓦片的投影（Web Mercator）
+params = ["task_id"]
+
+# 启用连接池复用
+pool_min_idle = 5
+pool_max_idle = 20
+pool_max_lifetime = "300s"
+# 地面图层配置
+# 建筑物图层配置
+[[providers.layers]]
+name = "!TASKID!"
+geometry_fieldname = "geometry"
+geometry_type = "multipolygon"
+id_fieldname = "id"
+srid = 3857
+params = ["task_id"]
+
+sql = """
+SELECT ST_AsMVTGeom(geometry, !BBOX!, 4096, 256, true) AS geometry, id, !COLUMNS!
+FROM !TASKID!
+WHERE geometry && !BBOX!
+"""
+
+# 地图配置
+[[maps]]
+name = "inference_database"     # 地图名称（用于URL：/maps/inference_database）
+attribution = "Tegola Vector Tiles"  # 版权信息
+
+
+# 配置地图参数
+[[maps.params]]
+name = "task_id"
+token = "!TASKID!"
+type = "string"
+
+# 地图中的动态图层
+[[maps.layers]]
+provider_layer = "inference_database.!TASKID!"
+

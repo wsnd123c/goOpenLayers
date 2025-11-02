@@ -48,7 +48,7 @@ func GZipHandler(next http.Handler) http.Handler {
 }
 
 // gzipDecompressResponseWriter is responsible for decompressing responses
-// when the http status code == 200.
+// when the myhttp status code == 200.
 type gzipDecompressResponseWriter struct {
 	status int
 	resp   http.ResponseWriter
