@@ -24,6 +24,12 @@ const (
 	// QueryKeyDebug is a common query string key used throughout the pacakge
 	// the value should always be a boolean
 	QueryKeyDebug = "debug"
+
+	// QueryKeySchema lets dynamic table requests target a specific PostGIS schema.
+	QueryKeySchema = "schema"
+
+	// DynamicVectorMapName is the configured map used by the schema/table vector route.
+	DynamicVectorMapName = "inference_database"
 )
 
 var (
@@ -108,6 +114,8 @@ func NewRouter(a *atlas.Atlas) *httptreemux.TreeMux {
 
 	// map tiles
 	hMapLayerZXY := HandleMapLayerZXY{Atlas: a}
+	group.UsingContext().
+		Handler(observability.InstrumentAPIHandler(http.MethodGet, "/maps/vector/:schema_name/:table_name/:z/:x/:y", o, HeadersHandler(GZipHandler(TileCacheHandler(a, hMapLayerZXY)))))
 	group.UsingContext().
 		Handler(observability.InstrumentAPIHandler(http.MethodGet, "/maps/:map_name/:z/:x/:y", o, HeadersHandler(GZipHandler(TileCacheHandler(a, hMapLayerZXY)))))
 	group.UsingContext().

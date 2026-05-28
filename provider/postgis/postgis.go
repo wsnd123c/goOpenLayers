@@ -685,6 +685,10 @@ func CreateProvider(
 					err,
 				)
 			}
+		} else if strings.Contains(lName, "!TASKID!") || strings.Contains(l.sql, "!TASKID!") {
+			// Dynamic table layers resolve their source table and geometry column per request.
+			// Use a generic geometry type for metadata instead of probing a placeholder table at startup.
+			l.geomType = geom.Collection{}
 		} else {
 			pname, err := config.String(ConfigKeyName, nil)
 			if err != nil {
@@ -1086,6 +1090,7 @@ type layerSQLInfo struct {
 	layer           provider.Layer
 	layerDef        Layer
 	replacedMVTName string
+	tableName       string
 	featureIDName   string
 }
 
@@ -1112,6 +1117,7 @@ func (p Provider) buildLayerSQLs(
 
 		rawMVTName := layers[i].MVTName
 		replacedMVTName := params.ReplaceMvtTableName(rawMVTName)
+		tableName := params.ReplaceTableName(rawMVTName)
 
 		var featureIDName string
 		if l.IDFieldName() == "" {
@@ -1124,6 +1130,7 @@ func (p Provider) buildLayerSQLs(
 			layer:           layers[i],
 			layerDef:        l,
 			replacedMVTName: replacedMVTName,
+			tableName:       tableName,
 			featureIDName:   featureIDName,
 		}
 
@@ -1231,7 +1238,7 @@ func (p Provider) MVTForLayers(
 			sql = params.ReplaceParams(sql, args)
 
 			// 处理动态列
-			sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, info.layerDef.GeomFieldName(), sql, args, info.replacedMVTName)
+			sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, info.layerDef.GeomFieldName(), sql, args, info.tableName)
 			if err != nil {
 				return "", fmt.Errorf("error replacing dynamic columns for layer %v: %w", info.layerDef.Name(), err)
 			}
@@ -1374,16 +1381,17 @@ func (p Provider) generateSimplifiedTile(
 
 			// 动态获取所有列（带缓存优化）
 			var colList string
-			if cachedCols, exists := p.columnCache[info.replacedMVTName]; exists {
+			columnCacheKey := info.tableName + "|" + info.layerDef.GeomFieldName()
+			if cachedCols, exists := p.columnCache[columnCacheKey]; exists {
 				colList = cachedCols
 			} else {
 				var err error
-				colList, err = provider.GetColumnsFromDB(ctx, p.pool.Pool, info.replacedMVTName, info.layerDef.GeomFieldName())
+				colList, err = provider.GetColumnsFromDB(ctx, p.pool.Pool, info.tableName, info.layerDef.GeomFieldName())
 				if err != nil {
-					log.Errorf("获取表 %s 的列信息失败: %v", info.replacedMVTName, err)
+					log.Errorf("获取表 %s 的列信息失败: %v", info.tableName, err)
 					colList = "*"
 				} else {
-					p.columnCache[info.replacedMVTName] = colList
+					p.columnCache[columnCacheKey] = colList
 				}
 			}
 
@@ -1439,7 +1447,7 @@ WHERE m.%s IS NOT NULL
 				colList,
 				info.layerDef.GeomFieldName(),
 				info.layerDef.GeomFieldName(),
-				info.replacedMVTName,
+				info.tableName,
 				info.layerDef.GeomFieldName(),
 				info.layerDef.GeomFieldName(),
 				int(z), info.layerDef.GeomFieldName(), minAreaThreshold, // 面积过滤参数

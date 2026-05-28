@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/go-spatial/cobra"
 	"github.com/go-spatial/tegola/atlas"
@@ -68,9 +67,7 @@ func initConfig(configFile string, cacheRequired bool, logLevel string) (err err
 	// Parse the provided log level; default to INFO if parsing fails.
 	lvl := log.ParseLogLevel(logLevel)
 
-	logger := log.NewLogger(lvl).
-		WithGroup("tegola").
-		With("version", build.Version, "pid", os.Getpid(), "rev", build.GitRevision)
+	logger := log.NewLogger(lvl)
 
 	// set out logger as the new default slog logger
 	slog.SetDefault(logger)
@@ -78,10 +75,6 @@ func initConfig(configFile string, cacheRequired bool, logLevel string) (err err
 	if conf, err = config.Load(configFile); err != nil {
 		return err
 	}
-
-	// Debug: Check if AppConfigSource was loaded
-	fmt.Printf("DEBUG: Config loaded. AppConfigSource: %+v\n", conf.AppConfigSource)
-	fmt.Printf("DEBUG: AppConfigSource length: %d\n", len(conf.AppConfigSource))
 
 	if err = conf.Validate(); err != nil {
 		return err

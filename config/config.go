@@ -27,6 +27,7 @@ const (
 	PixelHeightToken      = "!PIXEL_HEIGHT!"
 	IdFieldToken          = "!ID_FIELD!"
 	GeomFieldToken        = "!GEOM_FIELD!"
+	DynamicGeomFieldToken = "!GEOM_COLUMN!"
 	GeomTypeToken         = "!GEOM_TYPE!"
 )
 
@@ -42,6 +43,7 @@ var ReservedTokens = map[string]struct{}{
 	PixelHeightToken:      {},
 	IdFieldToken:          {},
 	GeomFieldToken:        {},
+	DynamicGeomFieldToken: {},
 	GeomTypeToken:         {},
 	"!COLUMNS!":           {},
 }
@@ -362,12 +364,11 @@ func (c *Config) ConfigureTileBuffers() {
 func Parse(reader io.Reader, location string) (conf Config, err error) {
 	// decode conf file, don't care about the meta data.
 	_, err = toml.NewDecoder(reader).Decode(&conf)
-	fmt.Printf("Raw Providers: %#v\n", conf.Providers)
 
 	if err != nil {
 		return conf, err
 	}
-	fmt.Printf("Raw Providers from TOML: %#v\n", conf.Providers)
+
 	for _, m := range conf.Maps {
 		for k, p := range m.Parameters {
 			p.Normalize()

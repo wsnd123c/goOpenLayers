@@ -81,7 +81,7 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 
 		// cache miss
 		if !hit {
-			log.Infof("DEBUG缓存中间件: 缓存未命中，准备创建新缓存")
+			log.Debugf("tile cache miss: %s", key.String())
 			// buffer which will hold a copy of the response for writing to the cache
 			var buff bytes.Buffer
 
@@ -95,7 +95,7 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 
 			// check if our request context has been canceled
 			if r.Context().Err() != nil {
-				log.Infof("DEBUG缓存中间件: 请求上下文已取消")
+				log.Debugf("tile cache skipped, request cancelled: %s", key.String())
 				return
 			}
 
@@ -175,7 +175,7 @@ func (w *tileCacheResponseWriter) Write(b []byte) (int, error) {
 
 func (w *tileCacheResponseWriter) WriteHeader(i int) {
 	w.status = i
-	log.Infof("DEBUG缓存ResponseWriter: 设置响应状态码: %d", i)
+	log.Debugf("tile cache response status: %d", i)
 
 	w.resp.WriteHeader(i)
 }

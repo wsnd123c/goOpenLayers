@@ -129,9 +129,49 @@ func TestReplaceParams(t *testing.T) {
 			expectedSql:  "!NOT_PARAM! $1 !NOT_PARAM!",
 			expectedArgs: []interface{}{1},
 		},
+		"task id with schema": {
+			params: Params{
+				"!TASKID!": {
+					Token: "!TASKID!",
+					SQL:   "?",
+					Value: "building_task",
+				},
+				"!SCHEMA!": {
+					Token: "!SCHEMA!",
+					SQL:   "?",
+					Value: "tenant_a",
+				},
+			},
+			sql:          "SELECT * FROM !TASKID! WHERE geom && !BBOX!",
+			expectedSql:  "SELECT * FROM tenant_a.building_task WHERE geom && !BBOX!",
+			expectedArgs: []interface{}{},
+		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, fn(tc))
+	}
+}
+
+func TestReplaceMvtTableNameDoesNotIncludeSchema(t *testing.T) {
+	params := Params{
+		"!TASKID!": {
+			Token: "!TASKID!",
+			SQL:   "?",
+			Value: "building_task",
+		},
+		"!SCHEMA!": {
+			Token: "!SCHEMA!",
+			SQL:   "?",
+			Value: "tenant_a",
+		},
+	}
+
+	if got := params.ReplaceMvtTableName("!TASKID!"); got != "building_task" {
+		t.Fatalf("expected MVT layer name to stay unqualified, got %q", got)
+	}
+
+	if got := params.ReplaceTableName("!TASKID!"); got != "tenant_a.building_task" {
+		t.Fatalf("expected SQL table name to include schema, got %q", got)
 	}
 }

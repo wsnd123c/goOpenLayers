@@ -94,9 +94,12 @@ var serverCmd = &cobra.Command{
 
 		// initialize config source if configured
 		var configWatcher *source.ConfigWatcher
-		log.Infof("Full config struct: %+v", conf)
-		log.Infof("Checking app config source: %+v", conf.AppConfigSource)
-		log.Infof("AppConfigSource length: %d", len(conf.AppConfigSource))
+		log.Infof("config loaded: providers=%d maps=%d cache=%t app_config_source=%t",
+			len(conf.Providers),
+			len(conf.Maps),
+			len(conf.Cache) > 0,
+			len(conf.AppConfigSource) > 0,
+		)
 		if len(conf.AppConfigSource) > 0 {
 			log.Info("Initializing app config source...")
 			configWatcher = initConfigSource(context.Background())

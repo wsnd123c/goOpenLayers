@@ -16,6 +16,7 @@ import (
 	"github.com/go-spatial/geom"
 
 	"github.com/go-spatial/tegola/atlas"
+	"github.com/go-spatial/tegola/provider"
 	"github.com/go-spatial/tegola/provider/test"
 	"github.com/go-spatial/tegola/server"
 )
@@ -89,6 +90,26 @@ func newTestMapWithBounds(minx, miny, maxx, maxy float64) *atlas.Atlas {
 	testMap.Center = testMapCenter
 	testMap.Layers = append(testMap.Layers, testLayer1)
 	testMap.Bounds = &geom.Extent{minx, miny, maxx, maxy}
+
+	a := &atlas.Atlas{}
+	a.AddMap(testMap)
+
+	return a
+}
+
+func newTestDynamicVectorMapWithLayers(layers ...atlas.Layer) *atlas.Atlas {
+	testMap := atlas.NewWebMercatorMap(server.DynamicVectorMapName)
+	testMap.Attribution = testMapAttribution
+	testMap.Center = testMapCenter
+	testMap.Layers = append(testMap.Layers, layers...)
+	testMap.Params = []provider.QueryParameter{
+		{
+			Name:  "task_id",
+			Token: "!TASKID!",
+			Type:  "string",
+			SQL:   "?",
+		},
+	}
 
 	a := &atlas.Atlas{}
 	a.AddMap(testMap)

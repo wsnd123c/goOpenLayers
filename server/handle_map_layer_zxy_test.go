@@ -216,6 +216,26 @@ func TestHandleMapZXY(t *testing.T) {
 	}
 }
 
+func TestHandleDynamicVectorSchemaTableZXY(t *testing.T) {
+	tests := map[string]MapHandlerTCase{
+		"schema table path": {
+			uri:            "/maps/vector/public/task_123/4/2/3.pbf",
+			atlas:          newTestDynamicVectorMapWithLayers(testLayer1),
+			expectedCode:   http.StatusOK,
+			expectedLayers: []string{"test-layer"},
+		},
+		"invalid z": {
+			uri:          "/maps/vector/public/task_123/-1/0/0.pbf",
+			atlas:        newTestDynamicVectorMapWithLayers(testLayer1),
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "invalid Z value (-1)",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, MapHandlerTester(tc))
+	}
+}
+
 func TestHandleMapLayerCORS(t *testing.T) {
 	tests := map[string]CORSTestCase{
 		"map": {

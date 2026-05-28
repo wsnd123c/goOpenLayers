@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-	"log/slog"
 
 	"github.com/dimfeld/httptreemux"
 	"github.com/go-spatial/geom"
@@ -54,8 +54,13 @@ func (req *HandleMapLayerZXY) parseURI(r *http.Request) error {
 	params := httptreemux.ContextParams(r.Context())
 
 	// set map name
-	req.mapName = params["map_name"]
-	req.layerName = params["layer_name"]
+	if _, ok := params["table_name"]; ok {
+		req.mapName = DynamicVectorMapName
+		req.layerName = ""
+	} else {
+		req.mapName = params["map_name"]
+		req.layerName = params["layer_name"]
+	}
 
 	var placeholder uint64
 
@@ -227,7 +232,7 @@ func (req HandleMapLayerZXY) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// check for tile size warnings
 	if len(pbyte) > MaxTileSize {
-		slog.Default().Info("tile is rather large", 
+		slog.Default().Info("tile is rather large",
 			slog.String("map", req.mapName),
 			slog.String("layer", req.layerName),
 			slog.Uint64("z", uint64(req.z)),
@@ -240,6 +245,10 @@ func (req HandleMapLayerZXY) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func extractParameters(m atlas.Map, r *http.Request) (provider.Params, error) {
 	var params provider.Params
+	pathParams := httptreemux.ContextParams(r.Context())
+	pathTable := strings.TrimSpace(pathParams["table_name"])
+	pathSchema := strings.TrimSpace(pathParams["schema_name"])
+
 	if m.Params != nil && len(m.Params) > 0 {
 		params = make(provider.Params)
 		err := r.ParseForm()
@@ -254,6 +263,12 @@ func extractParameters(m atlas.Map, r *http.Request) (provider.Params, error) {
 					return nil, err
 				}
 				params[param.Token] = val
+			} else if param.Name == "task_id" && pathTable != "" {
+				val, err := param.ToValue(pathTable)
+				if err != nil {
+					return nil, err
+				}
+				params[param.Token] = val
 			} else {
 				p, err := param.ToDefaultValue()
 				if err != nil {
@@ -263,5 +278,23 @@ func extractParameters(m atlas.Map, r *http.Request) (provider.Params, error) {
 			}
 		}
 	}
+
+	schema := pathSchema
+	if schema == "" {
+		schema = strings.TrimSpace(r.URL.Query().Get(QueryKeySchema))
+	}
+	if schema != "" {
+		if params == nil {
+			params = make(provider.Params)
+		}
+		params["!SCHEMA!"] = provider.QueryParameterValue{
+			Token:    "!SCHEMA!",
+			SQL:      "?",
+			Value:    schema,
+			RawParam: QueryKeySchema,
+			RawValue: schema,
+		}
+	}
+
 	return params, nil
 }
