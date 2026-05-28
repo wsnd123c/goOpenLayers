@@ -28,6 +28,7 @@ sql = """
 SELECT ST_AsMVTGeom(!GEOM_COLUMN!, !BBOX!, 4096, 256, true) AS geom, !COLUMNS!
 FROM !TASKID!
 WHERE !GEOM_COLUMN! && !BBOX!
+  AND !STATUS_FILTER!
 """
 
 # 地图配置
@@ -41,6 +42,13 @@ attribution = "Tegola Vector Tiles"  # 版权信息
 name = "task_id"
 token = "!TASKID!"
 type = "string"
+
+[[maps.params]]
+name = "status"
+token = "!STATUS_FILTER!"
+type = "string"
+sql = "\"status\" = ?"
+default_sql = "TRUE"
 
 # 地图中的动态图层
 [[maps.layers]]
