@@ -117,6 +117,7 @@ func TileCacheHandler(a *atlas.Atlas, next http.Handler) http.Handler {
 		//log.Infof("DEBUG缓存中间件: 缓存命中，返回缓存数据，key: %s, 大小: %d bytes", key.String(), len(cachedTile))
 
 		// mimetype for mapbox vector tiles
+		setEditingTileNoStoreHeaders(w, r)
 		w.Header().Add("Content-Type", mvt.MimeType)
 
 		// communicate the cache is being used

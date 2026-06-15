@@ -63,3 +63,30 @@ func TestStackTraceHandler(t *testing.T) {
 		t.Run(name, fn(tc))
 	}
 }
+
+func TestConsoleHandlerFormatsPGXSQL(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(log.NewConsoleHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	logger.Error(`PostGIS(pgx): Query err="column \"g_clip\" does not exist code=42703" args=[editing] pid=123 time=28ms sql="SELECT * FROM task_1.prod_JZW WHERE status = $1 ORDER BY fid LIMIT 50"`)
+
+	output := buf.String()
+	for _, unwanted := range []string{"level=", "msg=", `sql="SELECT`} {
+		if strings.Contains(output, unwanted) {
+			t.Fatalf("console log contains noisy field %q: %s", unwanted, output)
+		}
+	}
+
+	for _, wanted := range []string{
+		"ERROR PostGIS(pgx): Query",
+		`err="column \"g_clip\" does not exist code=42703"`,
+		"args=[editing]",
+		"\n  sql: SELECT *",
+		"\n       FROM task_1.prod_JZW",
+		"\n       WHERE status = $1",
+	} {
+		if !strings.Contains(output, wanted) {
+			t.Fatalf("console log missing %q: %s", wanted, output)
+		}
+	}
+}

@@ -12,3 +12,13 @@ func HeadersHandler(next http.Handler) http.Handler {
 		return
 	})
 }
+
+func setEditingTileNoStoreHeaders(w http.ResponseWriter, r *http.Request) {
+	if r.URL == nil || r.URL.Query().Get("status") != "editing" {
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+}

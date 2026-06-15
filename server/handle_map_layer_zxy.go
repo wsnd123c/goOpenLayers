@@ -221,6 +221,7 @@ func (req HandleMapLayerZXY) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// mimetype for mapbox vector tiles
 	// https://www.iana.org/assignments/media-types/application/vnd.mapbox-vector-tile
+	setEditingTileNoStoreHeaders(w, r)
 	w.Header().Add("Content-Type", mvt.MimeType)
 	w.Header().Add("Content-Length", fmt.Sprintf("%d", len(pbyte)))
 	w.WriteHeader(http.StatusOK)

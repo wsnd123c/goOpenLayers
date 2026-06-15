@@ -30,7 +30,12 @@ func NewLogger(lvl slog.Level, options ...func(opts *slog.HandlerOptions)) *slog
 		opt(handlerOptions)
 	}
 
-	baseHandler := slog.NewTextHandler(os.Stderr, handlerOptions)
+	var baseHandler slog.Handler
+	if strings.EqualFold(os.Getenv("TEGOLA_LOG_FORMAT"), "json") {
+		baseHandler = slog.NewJSONHandler(os.Stderr, handlerOptions)
+	} else {
+		baseHandler = NewConsoleHandler(os.Stderr, handlerOptions)
+	}
 
 	handler := NewHandlerWithStack(baseHandler, strings.EqualFold(os.Getenv("TEGOLA_LOG_STACK"), "true"))
 	logger := slog.New(handler)

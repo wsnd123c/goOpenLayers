@@ -1294,6 +1294,9 @@ func (p Provider) MVTForLayers(
 			//log.Warnf("简化瓦片失败 Z:%d, 使用原始数据: %v", z, err)
 			return data, nil // 返回原始数据
 		}
+		if len(optimizedData) == 0 {
+			return data, nil
+		}
 
 		// 低缩放级别更激进地使用简化版本
 		if z <= 10 || len(optimizedData) < dataSize || len(optimizedData) > 0 && dataSize == 0 {
@@ -1423,7 +1426,7 @@ spatial_filter AS (
   ORDER BY
     CASE
       WHEN ST_GeometryType(t.%s) IN ('ST_Point','ST_MultiPoint') THEN 1
-      ELSE ST_Area(g_clip)
+      ELSE ST_Area(ST_ClipByBox2D(t.%s, box2d(tile.env)))
     END DESC
   LIMIT %d
 ),
@@ -1459,6 +1462,7 @@ WHERE m.%s IS NOT NULL
 				info.layerDef.GeomFieldName(),
 				statusFilter,
 				int(z), info.layerDef.GeomFieldName(), minAreaThreshold, // 面积过滤参数
+				info.layerDef.GeomFieldName(),
 				info.layerDef.GeomFieldName(),
 				dataLimit, // 动态数据限制
 				colList,
