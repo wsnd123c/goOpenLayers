@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/tegola"
@@ -429,9 +430,91 @@ func (l *LoggerAdapter) Log(
 		return
 	}
 
+	message := formatPGXTraceLog(msg, data)
 	if level == tracelog.LogLevelError {
-		log.Errorf("PostGIS(pgx): %s, %#v", msg, data)
-	} else {
-		log.Warnf("PostGIS(pgx): %s, %#v", msg, data)
+		log.Error(message)
+		return
 	}
+
+	log.Warn(message)
+}
+
+func formatPGXTraceLog(msg string, data map[string]any) string {
+	parts := []string{fmt.Sprintf("PostGIS(pgx): %s", msg)}
+
+	if errText := formatTraceError(data["err"]); errText != "" {
+		parts = append(parts, fmt.Sprintf("err=%q", errText))
+	}
+	if args, ok := data["args"]; ok {
+		parts = append(parts, fmt.Sprintf("args=%v", args))
+	}
+	if pid, ok := data["pid"]; ok {
+		parts = append(parts, fmt.Sprintf("pid=%v", pid))
+	}
+	if elapsed := formatTraceDuration(data["time"]); elapsed != "" {
+		parts = append(parts, "time="+elapsed)
+	}
+	if sqlText, ok := data["sql"].(string); ok && sqlText != "" {
+		parts = append(parts, fmt.Sprintf("sql=%q", compactSQL(sqlText)))
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func formatTraceError(errValue any) string {
+	switch err := errValue.(type) {
+	case nil:
+		return ""
+	case *pgconn.PgError:
+		if err == nil {
+			return ""
+		}
+		parts := []string{err.Message}
+		if err.Code != "" {
+			parts = append(parts, "code="+err.Code)
+		}
+		if err.Detail != "" {
+			parts = append(parts, "detail="+err.Detail)
+		}
+		if err.Hint != "" {
+			parts = append(parts, "hint="+err.Hint)
+		}
+		return strings.Join(parts, " ")
+	case error:
+		return err.Error()
+	default:
+		return fmt.Sprint(errValue)
+	}
+}
+
+func formatTraceDuration(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case time.Duration:
+		return v.String()
+	case int64:
+		return time.Duration(v).String()
+	case int:
+		return time.Duration(v).String()
+	case float64:
+		return time.Duration(v).String()
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func compactSQL(sql string) string {
+	fields := strings.Fields(sql)
+	if len(fields) == 0 {
+		return ""
+	}
+
+	const maxLen = 800
+	compact := strings.Join(fields, " ")
+	if len(compact) <= maxLen {
+		return compact
+	}
+
+	return compact[:maxLen] + "...(truncated)"
 }

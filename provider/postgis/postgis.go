@@ -1314,9 +1314,10 @@ func (p Provider) generateSimplifiedTile(
 	args []any,
 ) ([]byte, error) {
 	z, x, y := tile.ZXY()
+	simplifiedArgs := make([]any, 0)
 
 	// 使用公共方法构建简化的SQL
-	sqls, err := p.buildLayerSQLs(ctx, tile, params, layers, &args,
+	sqls, err := p.buildLayerSQLs(ctx, tile, params, layers, &simplifiedArgs,
 		func(info layerSQLInfo, args *[]any) (string, error) {
 			// 计算简化容差 - 12级以下加大简化力度
 			simplifyTolerance := func(z int) float64 {
@@ -1395,6 +1396,11 @@ func (p Provider) generateSimplifiedTile(
 				}
 			}
 
+			statusFilter := params.ReplaceParams("!STATUS_FILTER!", args)
+			if provider.ParameterTokenRegexp.MatchString(statusFilter) || strings.TrimSpace(statusFilter) == "" {
+				statusFilter = "TRUE"
+			}
+
 			// 构建高性能优化的SQL查询 - 预计算几何并优化处理流程
 			simplifiedSQL := fmt.Sprintf(`
 WITH tile AS (
@@ -1409,6 +1415,7 @@ spatial_filter AS (
   JOIN tile ON true
   WHERE t.%s && tile.env
     AND ST_Intersects(t.%s, tile.env)
+    AND (%s)
     AND CASE 
       WHEN %d <= 12 THEN ST_Area(t.%s) > %f  -- 12级以下过滤小几何
       ELSE true
@@ -1450,6 +1457,7 @@ WHERE m.%s IS NOT NULL
 				info.tableName,
 				info.layerDef.GeomFieldName(),
 				info.layerDef.GeomFieldName(),
+				statusFilter,
 				int(z), info.layerDef.GeomFieldName(), minAreaThreshold, // 面积过滤参数
 				info.layerDef.GeomFieldName(),
 				dataLimit, // 动态数据限制
@@ -1470,7 +1478,7 @@ WHERE m.%s IS NOT NULL
 	}
 
 	// 使用公共方法执行查询
-	return p.executeTileQuery(ctx, tile, sqls, args, mapName)
+	return p.executeTileQuery(ctx, tile, sqls, simplifiedArgs, mapName)
 }
 
 // Close will close the Provider's database connectio
