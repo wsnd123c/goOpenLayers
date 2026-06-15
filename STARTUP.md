@@ -42,6 +42,19 @@ location ^~ /tile/ {
 /tile/maps/vector/${schema}/${item.task_id}/{z}/{x}/{y}.pbf
 ```
 
+可选查询参数：
+
+```text
+?status=editing
+?status=deleted
+```
+
+说明：
+
+- `status` 是可选参数，不传时不过滤状态，兼容老项目。
+- 传 `status` 时，只返回表里 `status` 字段等于该值的矢量。
+- 目前常用值是 `editing` 和 `deleted`，后续如果新增其他状态，直接传对应值即可。
+
 ## 路由规则
 
 统一使用路径里的 schema 和表名：
@@ -54,6 +67,7 @@ location ^~ /tile/ {
 
 ```text
 /tile/maps/vector/public/task_123/12/3365/1552.pbf
+/tile/maps/vector/public/task_123/12/3365/1552.pbf?status=editing
 ```
 
 后端实际会查询：
