@@ -19,6 +19,12 @@ func TestSetEditingTileNoStoreHeaders(t *testing.T) {
 			expectPragma:  true,
 			expectExpires: true,
 		},
+		"editing among other query params disables cache": {
+			rawURL:        "/maps/vector/schema/table/10/1/1.pbf?foo=1&status=editing",
+			expectNoStore: true,
+			expectPragma:  true,
+			expectExpires: true,
+		},
 		"deleted does not change cache headers": {
 			rawURL: "/maps/vector/schema/table/10/1/1.pbf?status=deleted",
 		},

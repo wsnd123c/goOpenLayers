@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-spatial/geom"
@@ -111,6 +112,12 @@ func (c *connectionPoolCollector) Collectors(
 	return []observability.Collector{c}, nil
 }
 
+type metadataLoadCall struct {
+	done     chan struct{}
+	metadata provider.TableMetadata
+	err      error
+}
+
 // Provider provides the postgis data provider.
 type Provider struct {
 	config pgxpool.Config
@@ -134,7 +141,9 @@ type Provider struct {
 	queryHistogramSeconds            *prometheus.HistogramVec
 
 	// 添加列信息缓存，避免重复查询数据库
-	columnCache map[string]string
+	metadataCache    map[string]provider.TableMetadata
+	metadataInflight map[string]*metadataLoadCall
+	metadataCacheMu  *sync.RWMutex
 }
 
 func (p *Provider) Collectors(
@@ -471,10 +480,12 @@ func CreateProvider(
 	}
 
 	p := Provider{
-		srid:        uint64(srid),
-		config:      *dbconfig,
-		name:        name,
-		columnCache: make(map[string]string), // 初始化列信息缓存
+		srid:             uint64(srid),
+		config:           *dbconfig,
+		name:             name,
+		metadataCache:    make(map[string]provider.TableMetadata),
+		metadataInflight: make(map[string]*metadataLoadCall),
+		metadataCacheMu:  &sync.RWMutex{},
 	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), &p.config)
@@ -1095,7 +1106,7 @@ type layerSQLInfo struct {
 }
 
 // buildLayerSQLs 构建所有图层的SQL语句 - 提取公共逻辑
-func (p Provider) buildLayerSQLs(
+func (p *Provider) buildLayerSQLs(
 	ctx context.Context,
 	tile provider.Tile,
 	params provider.Params,
@@ -1153,7 +1164,7 @@ func (p Provider) buildLayerSQLs(
 }
 
 // executeTileQuery 执行瓦片查询的公共逻辑
-func (p Provider) executeTileQuery(
+func (p *Provider) executeTileQuery(
 	ctx context.Context,
 	tile provider.Tile,
 	sqls []string,
@@ -1197,7 +1208,49 @@ func (p Provider) executeTileQuery(
 	return data, nil
 }
 
-func (p Provider) MVTForLayers(
+func (p *Provider) tableMetadata(ctx context.Context, tableName, geomField string) (provider.TableMetadata, error) {
+	cacheKey := tableName + "|" + strings.ToLower(geomField)
+
+	p.metadataCacheMu.RLock()
+	metadata, ok := p.metadataCache[cacheKey]
+	p.metadataCacheMu.RUnlock()
+	if ok {
+		return metadata, nil
+	}
+
+	p.metadataCacheMu.Lock()
+	if metadata, ok := p.metadataCache[cacheKey]; ok {
+		p.metadataCacheMu.Unlock()
+		return metadata, nil
+	}
+	if call, ok := p.metadataInflight[cacheKey]; ok {
+		p.metadataCacheMu.Unlock()
+		select {
+		case <-call.done:
+			return call.metadata, call.err
+		case <-ctx.Done():
+			return provider.TableMetadata{}, ctx.Err()
+		}
+	}
+
+	call := &metadataLoadCall{done: make(chan struct{})}
+	p.metadataInflight[cacheKey] = call
+	p.metadataCacheMu.Unlock()
+
+	call.metadata, call.err = provider.GetTableMetadataFromDB(ctx, p.pool.Pool, tableName, geomField)
+
+	p.metadataCacheMu.Lock()
+	if call.err == nil {
+		p.metadataCache[cacheKey] = call.metadata
+	}
+	delete(p.metadataInflight, cacheKey)
+	close(call.done)
+	p.metadataCacheMu.Unlock()
+
+	return call.metadata, call.err
+}
+
+func (p *Provider) MVTForLayers(
 	ctx context.Context,
 	tile provider.Tile,
 	params provider.Params,
@@ -1238,7 +1291,11 @@ func (p Provider) MVTForLayers(
 			sql = params.ReplaceParams(sql, args)
 
 			// 处理动态列
-			sql, err = params.ReplaceParamsWithColumns(ctx, p.pool.Pool, info.layerDef.GeomFieldName(), sql, args, info.tableName)
+			metadata, err := p.tableMetadata(ctx, info.tableName, info.layerDef.GeomFieldName())
+			if err != nil {
+				return "", fmt.Errorf("error loading table metadata for layer %v: %w", info.layerDef.Name(), err)
+			}
+			sql, err = params.ReplaceParamsWithTableMetadata(sql, args, metadata)
 			if err != nil {
 				return "", fmt.Errorf("error replacing dynamic columns for layer %v: %w", info.layerDef.Name(), err)
 			}
@@ -1269,8 +1326,8 @@ func (p Provider) MVTForLayers(
 	var shouldSimplify bool
 	switch {
 	case z <= 8:
-		// 极低缩放级别，强制简化
-		shouldSimplify = true
+		// 极低缩放级别，只有数据量较大时再走二次简化，避免小瓦片重复查库
+		shouldSimplify = dataSize > 128*1024 // 128KB
 	case z <= 10:
 		// 很低缩放级别，数据量稍大就简化
 		shouldSimplify = dataSize > 128*1024 // 128KB
@@ -1308,7 +1365,7 @@ func (p Provider) MVTForLayers(
 }
 
 // 生成简化的瓦片数据 (只简化复杂线条)
-func (p Provider) generateSimplifiedTile(
+func (p *Provider) generateSimplifiedTile(
 	ctx context.Context,
 	tile provider.Tile,
 	params provider.Params,
@@ -1384,20 +1441,12 @@ func (p Provider) generateSimplifiedTile(
 			}(int(z))
 
 			// 动态获取所有列（带缓存优化）
-			var colList string
-			columnCacheKey := info.tableName + "|" + info.layerDef.GeomFieldName()
-			if cachedCols, exists := p.columnCache[columnCacheKey]; exists {
-				colList = cachedCols
-			} else {
-				var err error
-				colList, err = provider.GetColumnsFromDB(ctx, p.pool.Pool, info.tableName, info.layerDef.GeomFieldName())
-				if err != nil {
-					log.Errorf("获取表 %s 的列信息失败: %v", info.tableName, err)
-					colList = "*"
-				} else {
-					p.columnCache[columnCacheKey] = colList
-				}
+			metadata, err := p.tableMetadata(ctx, info.tableName, info.layerDef.GeomFieldName())
+			if err != nil {
+				log.Errorf("获取表 %s 的列信息失败: %v", info.tableName, err)
+				return "", err
 			}
+			colList := metadata.Columns
 
 			statusFilter := params.ReplaceParams("!STATUS_FILTER!", args)
 			if provider.ParameterTokenRegexp.MatchString(statusFilter) || strings.TrimSpace(statusFilter) == "" {

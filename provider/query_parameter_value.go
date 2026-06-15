@@ -104,20 +104,16 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 		return sql
 	}
 
-	var (
-		cache = make(map[string]string)
-		sb    strings.Builder
-	)
+	var sb strings.Builder
 	sql = params.replaceTaskID(sql, true) // 使用公共函数处理 !TASKID!
+	seen := make(map[string]struct{})
 	for _, token := range ParameterTokenRegexp.FindAllString(sql, -1) {
-
-		// ---- 2. 默认参数替换逻辑 ----
-		resultSQL, ok := cache[token]
-		if ok {
-			sql = strings.ReplaceAll(sql, token, resultSQL)
+		if _, ok := seen[token]; ok {
 			continue
 		}
+		seen[token] = struct{}{}
 
+		// ---- 2. 默认参数替换逻辑 ----
 		param, ok := params[token]
 		if !ok {
 			// 未识别的 token，跳过
@@ -142,9 +138,7 @@ func (params Params) ReplaceParams(sql string, args *[]interface{}) string {
 			sb.WriteString(fmt.Sprintf("$%d", len(*args)))
 		}
 
-		resultSQL = sb.String()
-		cache[token] = resultSQL
-		sql = strings.ReplaceAll(sql, token, resultSQL)
+		sql = strings.ReplaceAll(sql, token, sb.String())
 	}
 
 	//log.Infof("Final SQL after ReplaceParams:\n%s", sql)
@@ -308,18 +302,49 @@ func (params Params) ReplaceParamsWithColumns(
 		return sql, nil
 	}
 
+	getTableMetadata := func() (TableMetadata, error) {
+		return GetTableMetadataFromDB(ctx, pool, mvtTableName, geomField)
+	}
+
+	return params.replaceParamsWithColumns(sql, args, mvtTableName, getTableMetadata)
+}
+
+// ReplaceParamsWithTableMetadata substitutes dynamic column tokens using already
+// fetched metadata. Callers that render many tiles for the same table can cache
+// the metadata and avoid querying information_schema for every tile.
+func (params Params) ReplaceParamsWithTableMetadata(
+	sql string,
+	args *[]interface{},
+	metadata TableMetadata,
+) (string, error) {
+	if params == nil {
+		log.Warn("ReplaceParamsWithTableMetadata called with nil params")
+		return sql, nil
+	}
+
+	return params.replaceParamsWithColumns(sql, args, "", func() (TableMetadata, error) {
+		return metadata, nil
+	})
+}
+
+func (params Params) replaceParamsWithColumns(
+	sql string,
+	args *[]interface{},
+	mvtTableName string,
+	getTableMetadata func() (TableMetadata, error),
+) (string, error) {
 	var (
-		cache         = make(map[string]string)
 		sb            strings.Builder
 		tableMetadata *TableMetadata
 	)
 
-	getTableMetadata := func() (TableMetadata, error) {
+	seen := make(map[string]struct{})
+	getCachedTableMetadata := func() (TableMetadata, error) {
 		if tableMetadata != nil {
 			return *tableMetadata, nil
 		}
 
-		metadata, err := GetTableMetadataFromDB(ctx, pool, mvtTableName, geomField)
+		metadata, err := getTableMetadata()
 		if err != nil {
 			return TableMetadata{}, err
 		}
@@ -328,8 +353,13 @@ func (params Params) ReplaceParamsWithColumns(
 	}
 
 	for _, token := range ParameterTokenRegexp.FindAllString(sql, -1) {
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+
 		if token == dynamicGeomParamToken {
-			metadata, err := getTableMetadata()
+			metadata, err := getCachedTableMetadata()
 			if err != nil {
 				return "", fmt.Errorf("failed to get geometry column for table %s: %w", mvtTableName, err)
 			}
@@ -340,7 +370,7 @@ func (params Params) ReplaceParamsWithColumns(
 		//处理 !COLUMNS!
 		if token == "!COLUMNS!" {
 			if _, ok := params[taskIDParamToken]; ok {
-				metadata, err := getTableMetadata()
+				metadata, err := getCachedTableMetadata()
 				if err != nil {
 					return "", fmt.Errorf("failed to get columns for table %s: %w", mvtTableName, err)
 				}
@@ -353,12 +383,6 @@ func (params Params) ReplaceParamsWithColumns(
 		}
 
 		//  默认参数替换逻辑
-		resultSQL, ok := cache[token]
-		if ok {
-			sql = strings.ReplaceAll(sql, token, resultSQL)
-			continue
-		}
-
 		param, ok := params[token]
 		if !ok {
 
@@ -383,9 +407,7 @@ func (params Params) ReplaceParamsWithColumns(
 			sb.WriteString(fmt.Sprintf("$%d", len(*args)))
 		}
 
-		resultSQL = sb.String()
-		cache[token] = resultSQL
-		sql = strings.ReplaceAll(sql, token, resultSQL)
+		sql = strings.ReplaceAll(sql, token, sb.String())
 	}
 
 	//log.Infof("Final SQL after ReplaceParamsWithColumns:\n%s", sql)
